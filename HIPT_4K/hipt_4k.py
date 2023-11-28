@@ -36,7 +36,7 @@ class HIPT_4K(torch.nn.Module):
 	def __init__(self, 
 		model256_path: str = '../Checkpoints/vit256_small_dino.pth',
 		model4k_path: str = '../Checkpoints/vit4k_xs_dino.pth', 
-		device256=torch.device('cuda:0'), 
+		device256=torch.device('cuda:0'),
 		device4k=torch.device('cuda:1')):
 
 		super().__init__()
@@ -44,6 +44,7 @@ class HIPT_4K(torch.nn.Module):
 		self.model4k = get_vit4k(pretrained_weights=model4k_path).to(device4k)
 		self.device256 = device256
 		self.device4k = device4k
+		self.fc = torch.nn.Linear(192, 6).to(device4k)
 	
 	def forward(self, x):
 		"""
@@ -73,7 +74,8 @@ class HIPT_4K(torch.nn.Module):
 		features_cls256 = features_cls256.reshape(w_256, h_256, 384).transpose(0,1).transpose(0,2).unsqueeze(dim=0) 
 		features_cls256 = features_cls256.to(self.device4k, non_blocking=True)  # 4. [1 x 384 x w_256 x h_256]
 		features_cls4k = self.model4k.forward(features_cls256)                  # 5. [1 x 192], where 192 == dim of ViT-4K [ClS] token.
-		return features_cls4k
+		output = self.fc(features_cls4k)  # Pass the output through the fully connected layer
+		return output
 	
 	
 	def forward_asset_dict(self, x: torch.Tensor):
