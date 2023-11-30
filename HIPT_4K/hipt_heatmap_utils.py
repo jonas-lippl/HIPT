@@ -1,39 +1,26 @@
 ### Dependencies
 # Base Dependencies
-import argparse
-import colorsys
-from io import BytesIO
 import os
-import random
-import requests
-import sys
 
 # LinAlg / Stats / Plotting Dependencies
 import cv2
-import h5py
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
 import numpy as np
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw 
 from scipy.stats import rankdata
-import skimage.io
-from skimage.measure import find_contours
-from tqdm import tqdm
-import webdataset as wds
 
 # Torch Dependencies
 import torch
 import torch.nn as nn
 import torch.multiprocessing
-import torchvision
 from torchvision import transforms
 from einops import rearrange, repeat
 torch.multiprocessing.set_sharing_strategy('file_system')
 
-from attention_visualization_utils import get_patch_attention_scores, tensorbatch2im, concat_scores256
+from HIPT_4K.attention_visualization_utils import get_patch_attention_scores, tensorbatch2im, concat_scores256
 
 
 #def concat_scores256(attns, w_256, h_256, size=(256,256)):

@@ -1,38 +1,25 @@
 ### Dependencies
-import argparse
-import colorsys
-from io import BytesIO
 import os
-import random
-import requests
 import sys
 
 import cv2
-import h5py
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon
 import numpy as np
 from PIL import Image
 from PIL import ImageFont
 from PIL import ImageDraw 
 from scipy.stats import rankdata
-import skimage.io
-from skimage.measure import find_contours
-from tqdm import tqdm
-import webdataset as wds
 
 import torch
 import torch.nn as nn
-import torchvision
-from torchvision import transforms as pth_transforms
 import torchvision.transforms as transforms
-from einops import rearrange, repeat
+from einops import rearrange
 
 sys.path.append('../')
 sys.path.append('../Hierarchical-Pretraining/')
-import vision_transformer as vits
-import vision_transformer4k as vits4k
+import HIPT_4K.vision_transformer as vits
+import HIPT_4K.vision_transformer4k as vits4k
 
 def get_vit256(pretrained_weights, arch='vit_small', device=torch.device('cpu')):
     r"""

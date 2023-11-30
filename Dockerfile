@@ -5,25 +5,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     libffi-dev \
     build-essential \
-    rsync
+    rsync \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libxrender1
 
 
 WORKDIR /mnt
 
-RUN pip3 hash
+RUN pip3 install h5py
 RUN pip3 install numpy
-RUN pip3 pandas
-RUN pip3 pillow
-RUN pip3 tqdm
-RUN pip3 einops
-RUN pip3 webdataset
+RUN pip3 install pandas
+RUN pip3 install pillow
+RUN pip3 install tqdm
+RUN pip3 install einops
+RUN pip3 install webdataset
 RUN pip3 install matplotlib
-RUN pip3 opencv-python==4.4.0.46
-RUN pip3 torch
-RUN pip3 torchvision
-RUN pip3 lifelines
+RUN pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu117
+RUN pip3 install lifelines
 RUN pip3 install scikit-survival
 RUN pip3 install scikit-learn
+RUN pip3 install opencv-python
 
 
 ENV MPLCONFIGDIR=/tmp/matplotlib
