@@ -1,3 +1,7 @@
+import io
+import math
+import time
+
 import torch
 
 from torch.utils.data import DistributedSampler
@@ -52,7 +56,8 @@ class IterableBlobDataset(IterableDataset):
             labels = self.target_transform(labels)
 
         # Prepare indices for train test val split
-        path_to_splits = self.data_dir + '/' + self.splits_filename
+        blob_index = data.split('blob')[0][-1]
+        path_to_splits = self.data_dir + '/' + blob_index + self.splits_filename
         train_indices, val_indices, test_indices = get_train_val_test_indices(data[:-3], path_to_splits,
                                                                               train_split=0.8, val_split=0.1,
                                                                               test_split=0.1,
@@ -89,4 +94,15 @@ class IterableBlobDataset(IterableDataset):
             file_paths)))  # TODO: can we use cycle instead of chain to not exit the loader for multiple epochs -> maybe using islice() (see https://medium.com/speechmatics/how-to-build-a-streaming-dataloader-with-pytorch-a66dd891d9dd)
 
     def __iter__(self):
-        return self.get_stream(self.file_paths)
+        worker_info = torch.utils.data.get_worker_info()
+        if worker_info is None:
+            return self.get_stream(self.file_paths)
+        else:
+            per_worker = int(
+                math.ceil(len(self.file_paths) / float(worker_info.num_workers))
+            )
+            worker_id = worker_info.id
+            iter_start = worker_id * per_worker
+            iter_end = min(iter_start + per_worker, len(self.file_paths))
+            print(f"Worker {worker_id} | Iter start: {iter_start} | Iter end: {iter_end}")
+            return self.get_stream(self.file_paths[iter_start:iter_end])

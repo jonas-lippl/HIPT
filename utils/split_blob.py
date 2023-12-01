@@ -129,7 +129,7 @@ def setup_train_val_test_indices(blob_file: str, path_to_splits: str = 'splits.c
     filenames = metadata['filename'].unique()
 
     # load info for splits
-    splits = pd.read_csv(path_to_splits)
+    splits = pd.read_csv(blob_file[0] + path_to_splits)
     splits_filenames = splits['filenames'].unique()
     # check if every slide name from splits is in the blob
     if not np.all([x in filenames for x in splits_filenames]):
@@ -169,12 +169,12 @@ def get_number_of_train_val_test_samples(path_to_data: str = '/data', filename_s
     # get names of all blobs within in the data directory without .pt ending
     blob_paths = [path_to_data + "/" + f for f in os.listdir(path_to_data + "/") if f.endswith('.pt')]
     blob_paths = [blob_path[:-3] for blob_path in blob_paths]
-    path_to_splits = path_to_data + "/" + filename_splits
+    split_paths = [path_to_data + "/" + f[0] + filename_splits for f in os.listdir(path_to_data + "/") if f.endswith('.pt')]
     print(blob_paths)
     # setup data container for the lengths
     total_train_lengths, total_val_lengths, total_test_lengths = 0, 0, 0
-    for blob_name in blob_paths:
-        train_indices, val_indices, test_indices = get_train_val_test_indices(blob_name, path_to_splits)
+    for blob_path, splits_path in zip(blob_paths, split_paths):
+        train_indices, val_indices, test_indices = get_train_val_test_indices(blob_path, splits_path)
         # sum up the lengths for each split
         total_train_lengths += len(train_indices)
         total_val_lengths += len(val_indices)
@@ -196,17 +196,17 @@ def get_number_of_samples_per_blob(path_to_data: str = '/data', filename_splits:
     # get names of all blobs within in the data directory without .pt ending
     blob_paths = [path_to_data + "/" + f for f in os.listdir(path_to_data + "/") if f.endswith('.pt')]
     blob_paths = [blob_path[:-3] for blob_path in blob_paths]
-    path_to_splits = path_to_data + "/" + filename_splits
+    split_paths = [path_to_data + "/" + f[0] + "splits.csv" for f in os.listdir(path_to_data + "/") if f.endswith('.pt')]
     # setup data container for the lengths
     train_lengths, val_lengths, test_lengths = {}, {}, {}
-    for blob_name in blob_paths:
-        train_indices, val_indices, test_indices = get_train_val_test_indices(blob_name, path_to_splits)
+    for blob_path, split_path in zip(blob_paths, split_paths):
+        train_indices, val_indices, test_indices = get_train_val_test_indices(blob_path, split_path)
         # ensure that the blob_name only consists of blob without any prefix
-        blob_name = blob_name.split('/')[-1]
+        blob_path = blob_path.split('/')[-1]
         # save number of samples per mode for this blob in dicts 
-        train_lengths[blob_name] = len(train_indices)
-        val_lengths[blob_name] = len(val_indices)
-        test_lengths[blob_name] = len(test_indices)
+        train_lengths[blob_path] = len(train_indices)
+        val_lengths[blob_path] = len(val_indices)
+        test_lengths[blob_path] = len(test_indices)
 
     return train_lengths, val_lengths, test_lengths
 

@@ -14,13 +14,13 @@ from HIPT_4K.hipt_4k import HIPT_4K
 from utils.load_data import load_lymphoma_data
 
 """
-screen -dmS hipt sh -c 'docker run --shm-size=100gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/src/1_b_1000_ppb_1024um:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=100gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/src/10_b_100_ppb_2024um:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=6 /mnt/main.py; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='PyTorch BEiT pretraining for lymphoma images')
 parser.add_argument('--epochs', type=int, default=20, metavar='N', help='total epochs for training')
 parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate')
-parser.add_argument('--batch_size', type=int, default=4, metavar='N', help='batch size')
+parser.add_argument('--batch_size', type=int, default=1, metavar='N', help='batch size')
 parser.add_argument('--save_folder', type=str, default='hipt_4k_10_blobs_1000ppb_2048um',
                     metavar='N', help='save folder')
 parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', help='warmup epochs')
@@ -47,12 +47,7 @@ class Trainer:
     def __init__(self, model, optimizer, train_loader, val_loader, epochs, lr, batch_size, save_path,
                  save_every, test_every):
         self.gpu_id = int(os.environ["LOCAL_RANK"])
-        self.model = model.to(self.gpu_id)
-        # self.model.model256.to(self.gpu_id)
-        # self.model.model4k.to(self.gpu_id)
-        self.model.device256 = self.gpu_id
-        self.model.device4k = self.gpu_id
-        self.model = DDP(self.model, device_ids=[self.gpu_id])
+        self.model = DDP(model, device_ids=[self.gpu_id])
         self.optimizer = optimizer
         # self.scheduler = scheduler
         self.train_loader = train_loader
@@ -95,7 +90,7 @@ class Trainer:
             total_len_train_data += len(y)
             print(
                 f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | "
-                f"Batch {batch_count * 8 + self.gpu_id}/{len(self.train_loader)}")
+                f"Batch {batch_count * 6 + self.gpu_id}/{len(self.train_loader)}")
             X = X.to(self.gpu_id)
             y = y.to(self.gpu_id)
             self._run_batch(X, y)
@@ -134,7 +129,7 @@ class Trainer:
 
     def save_data(self):
         if not os.path.exists(self.save_path):
-            os.mkdir(self.save_path)
+            os.makedirs(self.save_path, exist_ok=True)
         torch.save(self.model.module.state_dict(), f"{self.save_path}/model.pt")
         df = pd.DataFrame(self.statistics)
         df.to_csv(f"{self.save_path}/statistics_gpu_{self.gpu_id}.csv", index=False)
@@ -146,7 +141,7 @@ def main():
     ddp_setup()
     train_loader = load_lymphoma_data(args.batch_size, mode='train')
     test_loader = load_lymphoma_data(args.batch_size, mode='test')
-    model = HIPT_4K(device256='cpu', device4k='cpu')
+    model = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.05)
     # scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
     #                                             num_training_steps=args.epochs)
