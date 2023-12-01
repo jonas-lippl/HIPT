@@ -56,7 +56,7 @@ class IterableBlobDataset(IterableDataset):
             labels = self.target_transform(labels)
 
         # Prepare indices for train test val split
-        blob_index = data.split('blob')[0][-1]
+        blob_index = data.split('blob')[0].split('/')[-1]
         path_to_splits = self.data_dir + '/' + blob_index + self.splits_filename
         train_indices, val_indices, test_indices = get_train_val_test_indices(data[:-3], path_to_splits,
                                                                               train_split=0.8, val_split=0.1,

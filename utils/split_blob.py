@@ -127,15 +127,14 @@ def setup_train_val_test_indices(blob_file: str, path_to_splits: str = 'splits.c
     # load metadata of one blob and extract from how many different slides the patches are
     metadata = pd.read_csv(blob_file + '.csv')
     filenames = metadata['filename'].unique()
-
     # load info for splits
-    splits = pd.read_csv(blob_file[0] + path_to_splits)
+    splits = pd.read_csv(path_to_splits)
     splits_filenames = splits['filenames'].unique()
     # check if every slide name from splits is in the blob
     if not np.all([x in filenames for x in splits_filenames]):
         # this shouldn't happen -> if it happens, something went wrong somewhere else probably (e.g sampled from
         # needle biopsy and reached max tries)
-        raise Exception("Not every slide name from splits is in the blob")
+        raise Exception(f"Not every slide name from splits is in the blob {blob_file}")
 
     # get corresponding filenames for each split
     train_filenames = splits[splits['train'] == 1]['filenames'].values
@@ -196,7 +195,7 @@ def get_number_of_samples_per_blob(path_to_data: str = '/data', filename_splits:
     # get names of all blobs within in the data directory without .pt ending
     blob_paths = [path_to_data + "/" + f for f in os.listdir(path_to_data + "/") if f.endswith('.pt')]
     blob_paths = [blob_path[:-3] for blob_path in blob_paths]
-    split_paths = [path_to_data + "/" + f[0] + "splits.csv" for f in os.listdir(path_to_data + "/") if f.endswith('.pt')]
+    split_paths = [path_to_data + "/" + f.split('blob')[0].split('/')[-1] + "splits.csv" for f in blob_paths]
     # setup data container for the lengths
     train_lengths, val_lengths, test_lengths = {}, {}, {}
     for blob_path, split_path in zip(blob_paths, split_paths):

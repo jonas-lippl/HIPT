@@ -12,6 +12,7 @@ def load_lymphoma_data(batch_size, mode='train', ppb=10000):
     filename_splits = "splits.csv"
     train_lenghts, val_lenghts, test_lengths = get_number_of_samples_per_blob(path_to_data, filename_splits)
     number_of_blobs = len([file for file in os.listdir(path_to_data) if file.endswith(".pt")])
+    print(f"Number of blobs: {number_of_blobs}")
     blobs_paths, blob_names = get_blobs_paths_and_names(path_to_data, number_of_blobs=number_of_blobs)
     total_train_len, total_val_len, total_test_len = get_total_number_of_samples(blob_names, train_lenghts,
                                                                                  val_lenghts, test_lengths)
