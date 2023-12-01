@@ -14,7 +14,7 @@ from HIPT_4K.hipt_4k import HIPT_4K
 from utils.load_data import load_lymphoma_data
 
 """
-screen -dmS hipt sh -c 'docker run --shm-size=100gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/src/10_b_100_ppb_2024um:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=6 /mnt/main.py; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=100gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/src/10_b_100_ppb_2048um:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='PyTorch BEiT pretraining for lymphoma images')
@@ -90,7 +90,7 @@ class Trainer:
             total_len_train_data += len(y)
             print(
                 f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | "
-                f"Batch {batch_count * 6 + self.gpu_id}/{len(self.train_loader)}")
+                f"Batch {batch_count * 8 + self.gpu_id}/{len(self.train_loader)}")
             X = X.to(self.gpu_id)
             y = y.to(self.gpu_id)
             self._run_batch(X, y)
