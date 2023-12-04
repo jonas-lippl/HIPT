@@ -52,10 +52,11 @@ class HIPT_4K(torch.nn.Module):
 		Return:
 			- features_cls4k (torch.Tensor): [1 x 192] cls token (d_4k = 192 by default).
 		"""
+        batch_size = x.shape[0]
         batch_256, w_256, h_256 = self.prepare_img_tensor(x)  # 1. [1 x 3 x W x H]
         batch_256 = batch_256.unfold(2, 256, 256).unfold(3, 256, 256)  # 2. [1 x 3 x w_256 x h_256 x 256 x 256]
         batch_256 = rearrange(batch_256,
-                              'b c p1 p2 w h -> (b p1 p2) c w h')  # 2. [B x 3 x 256 x 256], where B = (1*w_256*h_256)
+                              'b c p1 p2 w h -> (b p1 p2) c w h')  # 2. [B x 3 x 256 x 256], where B = (batch_size*w_256*h_256)
 
         features_cls256 = []
         for mini_bs in range(0, batch_256.shape[0],
@@ -65,7 +66,8 @@ class HIPT_4K(torch.nn.Module):
                 minibatch_256).detach().cpu())  # 3. Extracting ViT-256 features from [256 x 3 x 256 x 256] image batches.
 
         features_cls256 = torch.vstack(features_cls256)  # 3. [B x 384], where 384 == dim of ViT-256 [ClS] token.
-        features_cls256 = features_cls256.reshape(w_256, h_256, 384).transpose(0, 1).transpose(0, 2).unsqueeze(dim=0)
+        # features_cls256 = features_cls256.reshape(w_256, h_256, 384).transpose(0, 1).transpose(0, 2).unsqueeze(dim=0)
+        features_cls256 = features_cls256.reshape(batch_size, w_256, h_256, 384).transpose(1, 2).transpose(1, 3)
         features_cls256 = features_cls256.to(self.device4k, non_blocking=True)  # 4. [1 x 384 x w_256 x h_256]
         features_cls4k = self.model4k.forward(features_cls256)  # 5. [1 x 192], where 192 == dim of ViT-4K [ClS] token.
         output = self.fc(features_cls4k)  # Pass the output through the fully connected layer

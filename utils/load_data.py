@@ -1,12 +1,28 @@
 import os
 
-from torch.utils.data import DataLoader
+import torch
+from torch.utils.data import DataLoader, Dataset, DistributedSampler
 
 from utils.utils import get_blobs_paths_and_names, get_total_number_of_samples
 from utils.iterable_blob_dataset import IterableBlobDataset
 from utils.split_blob import get_number_of_samples_per_blob
 
 
+class Custom_folder_DS(Dataset):
+    def __init__(self, path, names, transform=None):
+        self.names = names
+        self.path = path
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.names)
+
+    def __getitem__(self, idx):
+        data = torch.load(self.path + "/" + self.names[idx])
+        return data[0].div(255.0), data[1]
+
+
+# NOTE: This took 1124.35 seconds per epoch for 3000 patches
 def load_lymphoma_data(batch_size, mode='train', ppb=10000):
     path_to_data = f"/data"
     filename_splits = "splits.csv"
@@ -21,3 +37,16 @@ def load_lymphoma_data(batch_size, mode='train', ppb=10000):
     data_iter = IterableBlobDataset(path_to_data, blobs_paths, filename_splits, total_train_len, total_val_len,
                                     total_test_len, mode=mode)
     return DataLoader(data_iter, batch_size=batch_size, drop_last=False, num_workers=2, timeout=600, prefetch_factor=2)
+
+
+# NOTE: This took 162.23 seconds per epoch for 3000 patches
+def load_lymphoma_data_single_patches(batch_size, mode='train'):
+    path_to_data = f"/data"
+    patches = [file for file in os.listdir(path_to_data)]
+    train_patches = patches[:2477]
+    val_patches = patches[2477:]
+    print(f"Total number of training samples: {len(train_patches)}")
+    dataset = Custom_folder_DS(path_to_data, train_patches) if mode == 'train' else Custom_folder_DS(path_to_data,
+                                                                                                     val_patches)
+    return DataLoader(dataset, sampler=DistributedSampler(dataset), batch_size=batch_size, drop_last=False,
+                      num_workers=2)
