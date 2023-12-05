@@ -43,8 +43,8 @@ def load_lymphoma_data(batch_size, mode='train', ppb=10000):
 def load_lymphoma_data_single_patches(batch_size, mode='train'):
     path_to_data = f"/data"
     patches = [file for file in os.listdir(path_to_data)]
-    train_patches = patches[:2477]
-    val_patches = patches[2477:]
+    train_patches = patches[:int(0.8*len(patches))]
+    val_patches = patches[int(0.8*len(patches)):]
     print(f"Total number of training samples: {len(train_patches)}")
     dataset = Custom_folder_DS(path_to_data, train_patches) if mode == 'train' else Custom_folder_DS(path_to_data,
                                                                                                      val_patches)

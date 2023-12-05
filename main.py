@@ -17,7 +17,7 @@ from utils.load_data import load_lymphoma_data, load_lymphoma_data_single_patche
 screen -dmS hipt sh -c 'docker run --shm-size=100gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096_px_2048mu:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py; exec bash'
 """
 
-parser = argparse.ArgumentParser(description='PyTorch BEiT pretraining for lymphoma images')
+parser = argparse.ArgumentParser(description='HIPT training for lymphoma images')
 parser.add_argument('--epochs', type=int, default=20, metavar='N', help='total epochs for training')
 parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate')
 parser.add_argument('--batch_size', type=int, default=8, metavar='N', help='batch size')
@@ -147,6 +147,9 @@ def main():
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.05)
     # scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
     #                                             num_training_steps=args.epochs)
+    if "model.pt" in os.listdir(f"experiments/{args.save_folder}"):
+        model.load_state_dict(torch.load(f"experiments/{args.save_folder}/model.pt"))
+        print("Continuing training from previous checkpoint...")
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
