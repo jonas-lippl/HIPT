@@ -19,6 +19,8 @@ class Custom_folder_DS(Dataset):
 
     def __getitem__(self, idx):
         data = torch.load(self.path + "/" + self.names[idx])
+        if self.transform:
+            return self.transform(data[0].div(255.0)), data[1]
         return data[0].div(255.0), data[1]
 
 
