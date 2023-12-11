@@ -36,7 +36,8 @@ import vision_transformer as vits
 from vision_transformer import DINOHead
 
 """
-screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain/ --epochs 100; exec bash'
+screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_100_epochs_64_bs/ --epochs 100; exec bash'
+screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs/ --epochs 40 --batch_size_per_gpu 64; exec bash'
 """
 
 
@@ -110,7 +111,7 @@ def get_args_parser():
     parser.add_argument('--clip_grad', type=float, default=3.0, help="""Maximal parameter
         gradient norm if using gradient clipping. Clipping with norm .3 ~ 1.0 can
         help optimization for larger ViT architectures. 0 for disabling.""")
-    parser.add_argument('--batch_size_per_gpu', default=64, type=int,
+    parser.add_argument('--batch_size_per_gpu', default=128, type=int,
                         help='Per-GPU batch-size : number of distinct images loaded on one GPU.')
     parser.add_argument('--epochs', default=100, type=int, help='Number of epochs of training.')
     parser.add_argument('--freeze_last_layer', default=1, type=int, help="""Number of epochs
@@ -144,7 +145,7 @@ def get_args_parser():
     parser.add_argument('--data_path', default='/path/to/imagenet/train/', type=str,
                         help='Please specify path to the ImageNet training data.')
     parser.add_argument('--output_dir', default=".", type=str, help='Path to save logs and checkpoints.')
-    parser.add_argument('--saveckp_freq', default=20, type=int, help='Save checkpoint every x epochs.')
+    parser.add_argument('--saveckp_freq', default=1, type=int, help='Save checkpoint every x epochs.')
     parser.add_argument('--seed', default=0, type=int, help='Random seed.')
     parser.add_argument('--num_workers', default=10, type=int, help='Number of data loading workers per GPU.')
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
@@ -171,8 +172,6 @@ def train_dino(args):
     with os.scandir(path_to_data) as it:
         for i, file in enumerate(it):
             patches.append(file.name)
-            if i == 5000:
-                break
 
     dataset = Custom_folder_DS(path_to_data, patches, transform=transform)
     sampler = DistributedSampler(dataset, shuffle=True)
@@ -335,6 +334,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
                     optimizer, lr_schedule, wd_schedule, momentum_schedule, epoch,
                     fp16_scaler, args):
     metric_logger = utils.MetricLogger(delimiter="  ")
+    start = time.time()
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
     for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
         # update weight decay and learning rate according to their schedule
@@ -350,13 +350,11 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
             student_output = student(images)
-            print("Shapes: ", student_output.shape, teacher_output.shape)
             loss = dino_loss(student_output, teacher_output, epoch)
 
         if not math.isfinite(loss.item()):
-            print("Loss is {}, stopping training".format(loss.item()), force=True)
-            continue
-            # sys.exit(1)
+            print(f"Loss is {loss.item()}, stopping training, GPU: {args.gpu}")
+            sys.exit(1)
 
         # student update
         optimizer.zero_grad()
@@ -392,6 +390,8 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
+    end = time.time()
+    print(f"Epoch: {epoch} took {end - start} seconds")
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 
@@ -418,14 +418,9 @@ class DINOLoss(nn.Module):
         """
         student_out = student_output / self.student_temp
         student_out = student_out.chunk(self.ncrops)
-        print("Teacher output before centering and sharpening: ", teacher_output)
         # teacher centering and sharpening
         temp = self.teacher_temp_schedule[epoch]
-        print("Center: ", self.center)
-        print("Teacher output max: ", teacher_output.max())
-        print("Teacher output min: ", teacher_output.min())
-        print("Current teacher temp: ", temp)
-        teacher_out = F.softmax((teacher_output) / temp, dim=-1)
+        teacher_out = F.softmax((teacher_output - self.center) / temp, dim=-1)
         teacher_out = teacher_out.detach().chunk(2)
 
         total_loss = 0
@@ -435,15 +430,11 @@ class DINOLoss(nn.Module):
                 if v == iq:
                     # we skip cases where student and teacher operate on the same view
                     continue
-                print("Student output: ", student_out[v])
-                print("Teacher output: ", q)
                 loss = torch.sum(-q * F.log_softmax(student_out[v], dim=-1), dim=-1)
                 mean_loss = loss.mean()
-                if math.isfinite(mean_loss.item()):
-                    total_loss += mean_loss
-                    n_loss_terms += 1
+                total_loss += mean_loss
+                n_loss_terms += 1
         total_loss /= n_loss_terms
-        print("Total loss", total_loss)
         self.update_center(teacher_output)
         return total_loss
 
@@ -470,39 +461,33 @@ class DataAugmentationDINO(object):
             ),
             transforms.RandomGrayscale(p=0.2),
         ])
-        normalize = transforms.Compose([
-            # transforms.ToTensor(),
-            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-        ])
 
         # first global crop
         self.global_transfo1 = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC, antialias=True),
+            transforms.RandomResizedCrop(224, scale=global_crops_scale, antialias=True),
             flip_and_color_jitter,
-            utils.GaussianBlurTensor(kernel_size=3, sigma=1.0, p=1.0),
-            normalize,
+            utils.GaussianBlurTensor(min_kernel_size=3, max_kernel_size=7, sigma=1.0, p=1.0),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
         # second global crop
         self.global_transfo2 = transforms.Compose([
-            transforms.RandomResizedCrop(224, scale=global_crops_scale, interpolation=Image.BICUBIC, antialias=True),
+            transforms.RandomResizedCrop(224, scale=global_crops_scale, antialias=True),
             flip_and_color_jitter,
-            utils.GaussianBlurTensor(kernel_size=3, sigma=1.0, p=0.1),
+            utils.GaussianBlurTensor(min_kernel_size=3, max_kernel_size=7, sigma=1.0, p=0.1),
             utils.SolarizationTensor(threshold=0.2),
-            normalize,
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
         # transformation for the local small crops
         self.local_crops_number = local_crops_number
         self.local_transfo = transforms.Compose([
-            transforms.RandomResizedCrop(96, scale=local_crops_scale, interpolation=Image.BICUBIC, antialias=True),
+            transforms.RandomResizedCrop(96, scale=local_crops_scale, antialias=True),
             flip_and_color_jitter,
-            utils.GaussianBlurTensor(kernel_size=3, sigma=1.0, p=0.5),
-            normalize,
+            utils.GaussianBlurTensor(min_kernel_size=3, max_kernel_size=7, sigma=1.0, p=0.5),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
 
     def __call__(self, image):
-        crops = []
-        crops.append(self.global_transfo1(image))
-        crops.append(self.global_transfo2(image))
+        crops = [self.global_transfo1(image), self.global_transfo2(image)]
         for _ in range(self.local_crops_number):
             crops.append(self.local_transfo(image))
         return crops

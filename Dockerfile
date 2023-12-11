@@ -27,6 +27,7 @@ RUN pip3 install scikit-survival
 RUN pip3 install scikit-learn
 RUN pip3 install opencv-python
 RUN pip3 install timm
+RUN pip3 install tqdm
 
 
 ENV MPLCONFIGDIR=/tmp/matplotlib

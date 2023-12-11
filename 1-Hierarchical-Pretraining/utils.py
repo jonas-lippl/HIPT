@@ -37,45 +37,53 @@ import torch.nn.functional as F
 class GaussianBlurTensor(object):
     """Apply Gaussian Blur to the tensor."""
 
-    def __init__(self, kernel_size, sigma, p):
-        self.kernel_size = kernel_size
+    def __init__(self, min_kernel_size, max_kernel_size, sigma, p):
+        self.min_kernel_size = min_kernel_size
+        self.max_kernel_size = max_kernel_size
         self.sigma = sigma
-        self.kernel = self.get_gaussian_kernel()
+        self.kernels = [(self.get_gaussian_kernel(kernel_size), kernel_size) for kernel_size in range(min_kernel_size, max_kernel_size + 1, 2)]
         self.p = p
 
-    def get_gaussian_kernel(self):
+    def get_gaussian_kernel(self, kernel_size):
         # Create a 1D Gaussian kernel
-        kernel_1d = torch.linspace(-(self.kernel_size // 2), self.kernel_size // 2, self.kernel_size)
+        kernel_1d = torch.linspace(-(kernel_size // 2), kernel_size // 2, kernel_size)
         kernel_1d = torch.exp(-kernel_1d ** 2 / (2 * self.sigma ** 2))
         kernel_1d = kernel_1d / kernel_1d.sum()
 
         # Create a 2D Gaussian kernel
         kernel_2d = torch.outer(kernel_1d, kernel_1d)
-        kernel_2d = kernel_2d.view(1, 1, self.kernel_size, self.kernel_size)
+        kernel_2d = kernel_2d.view(1, 1, kernel_size, kernel_size)
 
         return kernel_2d
 
     def __call__(self, tensor):
+        do_it = random.random() <= self.p
+        if not do_it:
+            return tensor
         channels = tensor.shape[0]
         blurred_tensor = torch.zeros_like(tensor)
         for i in range(channels):
             channel_tensor = tensor[i, :, :]
             channel_tensor = channel_tensor.unsqueeze(0)  # Add batch dimension
-            channel_tensor = F.conv2d(channel_tensor, self.kernel, padding=self.kernel_size//2)
+            kernel, kernel_size = random.choice(self.kernels)
+            channel_tensor = F.conv2d(channel_tensor, kernel, padding=kernel_size//2)
             channel_tensor = channel_tensor.squeeze(0)  # Remove batch dimension
-            blurred_tensor[i:i+1, :, :] = channel_tensor
+            blurred_tensor[i, :, :] = channel_tensor
         return blurred_tensor
 
 
 class SolarizationTensor(object):
     """Apply Solarization to the tensor."""
 
-    def __init__(self, threshold=0.2):
+    def __init__(self, threshold=0.5, p=0.2):
         self.threshold = threshold
+        self.p = p
 
     def __call__(self, tensor):
-        tensor = torch.where(tensor < self.threshold, tensor, 1 - tensor)
-        return tensor
+        if random.random() < self.p:
+            return torch.where(tensor < self.threshold, tensor, 1 - tensor)
+        else:
+            return tensor
 
 
 class GaussianBlur(object):
