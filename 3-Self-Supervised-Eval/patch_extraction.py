@@ -22,6 +22,7 @@ import torch.utils.data.dataset as Dataset
 from torchvision import transforms
 from pl_bolts.models.self_supervised import resnets
 from pl_bolts.utils.semi_supervised import Identity
+from patch_extraction_utils import create_embeddings
 device = torch.device('cuda:0')
 torch.multiprocessing.set_sharing_strategy('file_system')
 

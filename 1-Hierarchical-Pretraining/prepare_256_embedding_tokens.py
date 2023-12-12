@@ -3,6 +3,7 @@ import os
 
 import torch
 from torchvision import models as torchvision_models
+from torchvision import transforms
 from tqdm import tqdm
 
 import utils
@@ -33,9 +34,12 @@ def get_args_parser():
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    teacher = vits.__dict__[args.arch](patch_size=args.patch_size)
+    teacher = vits.vit_small(patch_size=16)
+    state_dict = torch.load("/mnt/ckpts/pretrain_40_epochs_64_bs/checkpoint0039.pth", map_location="cpu")['teacher']
+    state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+    state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+    missing_keys, unexpected_keys = teacher.load_state_dict(state_dict, strict=False)
 
-    utils.restart_from_checkpoint("/mnt/ckpts/pretrain_40_epochs_64_bs/checkpoint0006.pth", teacher=teacher)
     teacher.eval()
     teacher.to(device)
 
@@ -44,22 +48,26 @@ def main():
         os.makedirs(patch_dir, exist_ok=True)
     count = 0
 
-    for patch in tqdm(os.listdir("/data/single_4096_px_2048mu")):
-        if not patch.startswith("patch"):
+    transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+
+    patches = [patch for patch in os.listdir("/data/single_4096_px_2048mu") if patch.startswith("patch")]
+    with torch.no_grad():
+        for patch in tqdm(patches[12000:]):
             name = patch.split(".")[0]
+            file = os.path.join(patch_dir, f"{name}_256x384_embedding.pt")
+            if os.path.exists(file):
+                continue
             img_4096, _ = torch.load(os.path.join("/data/single_4096_px_2048mu", patch))
-            embedding = torch.zeros((256, 384))
+            batch = torch.zeros((256, 3, 256, 256))
             for i in range(16):
                 for j in range(16):
-                    img = img_4096[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone()
-                    out = teacher(img.div(255).unsqueeze(0).to(device)).squeeze(0).to('cpu')
-                    print(out.shape)
-                    embedding[i * 16 + j] = out
-            print("Tensor shape: ", embedding.shape)
-            torch.save(embedding, os.path.join(patch_dir, f"{name}_256x384_embedding.pt"))
+                    batch[i * 16 + j] = transform(img_4096[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
+            out = teacher(batch.to(device)).to('cpu')
+            torch.save(out, file)
             count += 1
-            if count == 10:
-                break
+            if count % 100 == 0:
+                print(f"Saved {count} patch embeddings.")
+        print(f"Saved {count} patch embeddings.")
 
 
 if __name__ == '__main__':
