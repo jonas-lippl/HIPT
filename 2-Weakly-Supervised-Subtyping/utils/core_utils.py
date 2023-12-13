@@ -593,14 +593,12 @@ def summary(model, loader, n_classes):
 
         acc_logger.log(Y_hat, label)
         probs = Y_prob.cpu().numpy()
-        # probs = F.softmax(Y_prob[:, 1:], dim=1).cpu().numpy()
         all_probs[batch_idx] = probs
         all_labels[batch_idx] = label.item()
         
         # patient_results.update({slide_id: {'slide_id': np.array(slide_id), 'prob': probs, 'label': label.item()}})
         error = calculate_error(Y_hat, label)
         test_error += error
-
     test_error /= len(loader)
 
     if n_classes == 2:
@@ -609,8 +607,8 @@ def summary(model, loader, n_classes):
     else:
         aucs = []
         binary_labels = label_binarize(all_labels, classes=[i for i in range(n_classes)])
-        print(binary_labels.shape)
-        print("Binary labels: ", binary_labels)
+        # print("Binary labels: ", binary_labels)
+        # print("All probs: ", all_probs)
         for class_idx in range(n_classes):
             if class_idx in all_labels:
                 fpr, tpr, thresholds = roc_curve(binary_labels[:, class_idx], all_probs[:, class_idx])
@@ -623,10 +621,10 @@ def summary(model, loader, n_classes):
                 plt.ylabel('True Positive Rate')
                 plt.title(f'Receiver Operating Characteristic of Class {class_idx}={INT2STR_LABEL_MAP[class_idx]}')
                 plt.savefig(f'results/roc_curve_class_{class_idx}={INT2STR_LABEL_MAP[class_idx]}.png')
+                plt.clf()
             else:
                 print('Class index does not occur in labels')
                 aucs.append(float('nan'))
-
         auc = np.nanmean(np.array(aucs))
 
 

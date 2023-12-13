@@ -133,8 +133,8 @@ parser.add_argument('--subtyping', action='store_true', default=False, help='sub
 ### Options Used
 parser.add_argument('--model_type', type=str, default='hipt_gp', help='Type of model to use',
                     choices=['clam_sb', 'clam_mb', 'mil', 'dgcn', 'mi_fcn', 'dsmil', 'hipt_n', 'hipt_lgp', 'hipt_gp'])
-parser.add_argument('--features', type=str, default='vits_tcga_pancancer_dino', help='Which features to use',
-                    choices=['resnet50_trunc', 'vits_tcga_pancancer_dino'])
+parser.add_argument('--features', type=str, default='vits_lymphoma_subtypes', help='Which features to use',
+                    choices=['resnet50_trunc', 'vits_tcga_pancancer_dino', 'vits_lymphoma_subtypes'])
 parser.add_argument('--task', type=str, default='lymphoma_subtype',
                     help='Which weakly-supervised task to evaluate on.')
 parser.add_argument('--path_input_dim', type=int, default=192, help='Size of patch embedding size (384 for DINO)')
