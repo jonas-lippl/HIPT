@@ -2,6 +2,7 @@ import os
 
 import torch
 from torch.utils.data import DataLoader, Dataset, DistributedSampler
+from torchvision import transforms
 
 from utils.utils import get_blobs_paths_and_names, get_total_number_of_samples
 from utils.iterable_blob_dataset import IterableBlobDataset
@@ -45,10 +46,13 @@ def load_lymphoma_data(batch_size, mode='train', ppb=10000):
 def load_lymphoma_data_single_patches(batch_size, mode='train'):
     path_to_data = f"/data"
     patches = [file for file in os.listdir(path_to_data)]
-    train_patches = patches[:int(0.8*len(patches))]
-    val_patches = patches[int(0.8*len(patches)):]
+    train_patches = patches[:int(0.8 * len(patches))]
+    val_patches = patches[int(0.8 * len(patches)):]
     print(f"Total number of training samples: {len(train_patches)}")
-    dataset = Custom_folder_DS(path_to_data, train_patches) if mode == 'train' else Custom_folder_DS(path_to_data,
-                                                                                                     val_patches)
+    transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    dataset = Custom_folder_DS(path_to_data, train_patches,
+                               transform=transform) if mode == 'train' else Custom_folder_DS(path_to_data,
+                                                                                             val_patches,
+                                                                                             transform=transform)
     return DataLoader(dataset, sampler=DistributedSampler(dataset), batch_size=batch_size, drop_last=False,
-                      num_workers=2)
+                      num_workers=4)

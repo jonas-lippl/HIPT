@@ -246,7 +246,7 @@ class VisionTransformer4K(nn.Module):
 def vit4k_xs(patch_size=16, **kwargs):
     model = VisionTransformer4K(
         patch_size=patch_size, input_embed_dim=384, output_embed_dim=192,
-        depth=6, num_heads=6, mlp_ratio=4, 
+        depth=6, num_heads=6, mlp_ratio=4,
         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
 

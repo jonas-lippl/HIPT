@@ -14,7 +14,7 @@ from models.model_utils import *
 
 import sys
 sys.path.append('../HIPT_4K/')
-from vision_transformer4k import vit4k_xs
+# from vision_transformer4k import vit4k_xs
 
 
 ######################################
@@ -70,8 +70,8 @@ class HIPT_None_FC(nn.Module):
 # 3-Stage HIPT Implementation (With Local-Global Pretraining) #
 ######################################
 class HIPT_LGP_FC(nn.Module):
-    def __init__(self, path_input_dim=384,  size_arg = "small", dropout=0.25, n_classes=4,
-     pretrain_4k='None', freeze_4k=False, pretrain_WSI='None', freeze_WSI=False):
+    def __init__(self, path_input_dim=384,  size_arg = "small", dropout=0.25, n_classes=7,
+     pretrain_4k='None', freeze_4k=True, pretrain_WSI='None', freeze_WSI=False):
         super(HIPT_LGP_FC, self).__init__()
         self.size_dict_path = {"small": [384, 192, 192], "big": [1024, 512, 384]}
         #self.fusion = fusion
@@ -180,12 +180,12 @@ class HIPT_GP_FC(nn.Module):
 
     def forward(self, h_4096, **kwargs):        
         ### Global
-        import pdb
-        pdb.set_trace()
+        # import pdb
+        # pdb.set_trace()
         if self.pretrain_WSI != 'None':
             h_WSI = self.global_vit(h_4096.unsqueeze(dim=0))
         else:
-            h_4096 = self.global_phi(h_4096)
+            h_4096 = self.global_phi(h_4096.squeeze(dim=0))
             h_4096 = self.global_transformer(h_4096.unsqueeze(1)).squeeze(1)
             A_4096, h_4096 = self.global_attn_pool(h_4096)  
             A_4096 = torch.transpose(A_4096, 1, 0)

@@ -28,6 +28,7 @@ RUN pip3 install scikit-learn
 RUN pip3 install opencv-python
 RUN pip3 install timm
 RUN pip3 install tqdm
+RUN pip3 install pamly
 
 
 ENV MPLCONFIGDIR=/tmp/matplotlib

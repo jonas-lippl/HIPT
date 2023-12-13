@@ -14,14 +14,14 @@ from HIPT_4K.hipt_4k import HIPT_4K
 from utils.load_data import load_lymphoma_data, load_lymphoma_data_single_patches
 
 """
-screen -dmS hipt sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096_px_2048mu:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --bartch; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096_px_2048mu:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=8; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='HIPT training for lymphoma images')
-parser.add_argument('--epochs', type=int, default=20, metavar='N', help='total epochs for training')
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR', help='learning rate')
+parser.add_argument('--epochs', type=int, default=30, metavar='N', help='total epochs for training')
+parser.add_argument('--lr', type=float, default=0.001, metavar='LR', help='learning rate')
 parser.add_argument('--batch_size', type=int, default=8, metavar='N', help='batch size')
-parser.add_argument('--save_folder', type=str, default='hipt_4k_35000_patches_2048um_frozen_transformer',
+parser.add_argument('--save_folder', type=str, default='hipt_4k_35000_patches_2048um_frozen_transformer_normalized_images',
                     metavar='N', help='save folder')
 parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', help='warmup epochs')
 parser.add_argument('--save_every', type=int, default=5, metavar='N', help='save every x epochs')
@@ -44,6 +44,15 @@ class ClassificationHead(torch.nn.Module):
 def ddp_setup():
     init_process_group(backend="nccl")
     torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
+
+
+def dump_args(args):
+    """
+    Dump all arguments to a text file.
+    """
+    with open(f"{args.save_folder}/args.txt", 'w') as f:
+        for arg in vars(args):
+            f.write(f"{arg}: {getattr(args, arg)}\n")
 
 
 def general_setup(seed: int = 1, benchmark=True, hub_dir: str = 'tmp/'):
@@ -91,12 +100,20 @@ class Trainer:
         loss.backward()
         self.optimizer.step()
 
+        # Free up memory
+        del feat, out, predicted_labels, loss
+        torch.cuda.empty_cache()
+
     def _run_validation_batch(self, X: torch.Tensor, y: torch.Tensor):
         with torch.no_grad():
             feat = self.feature_extractor.forward(X)
             out = self.classifier.forward(feat)
         predicted_labels = torch.argmax(out, dim=1)
         self.validation_corrects += torch.sum(predicted_labels == y)
+
+        # Free up memory
+        del feat, out, predicted_labels
+        torch.cuda.empty_cache()
 
     def _run_epoch(self, epoch):
         b_sz = len(next(iter(self.train_loader))[0])
@@ -168,10 +185,6 @@ def main():
     optimizer = torch.optim.Adam(classifier.parameters(), lr=args.lr, weight_decay=0.05)
     # scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
     #                                             num_training_steps=args.epochs)
-    if os.path.exists(f"experiments/{args.save_folder}"):
-        if "model.pt" in os.listdir(f"experiments/{args.save_folder}"):
-            model.load_state_dict(torch.load(f"experiments/{args.save_folder}/model.pt"))
-            print("Continuing training from previous checkpoint...")
     trainer = Trainer(
         feature_extractor=feature_extractor,
         classifier=classifier,

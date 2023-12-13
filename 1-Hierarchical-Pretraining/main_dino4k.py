@@ -38,7 +38,7 @@ from vision_transformer4k import DINOHead
 from einops import rearrange, repeat, reduce
 
 """
-screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/256x384_embedding_tokens:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit_xs --data_path /data/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs/ --epochs 100 --batch_size_per_gpu 64; exec bash'
+screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/256x384_embedding_tokens:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit4k_xs --data_path /data/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs/ --epochs 100 --batch_size_per_gpu 64; exec bash'
 """
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -49,7 +49,7 @@ def get_args_parser():
     parser = argparse.ArgumentParser('DINO4K', add_help=False)
 
     # Model parameters
-    parser.add_argument('--arch', default='vit_xs', type=str,
+    parser.add_argument('--arch', default='vit4k_xs', type=str,
         choices=['vit4k_xs', 'vit_tiny', 'vit_small', 'vit_base', 'xcit', 'deit_tiny', 'deit_small'] \
                 + torchvision_archs + torch.hub.list("facebookresearch/xcit:main"),
         help="""Name of architecture to train. For quick experiments with ViTs,
@@ -478,6 +478,7 @@ class DataAugmentationDINO4K(object):
         return crops
 
 if __name__ == '__main__':
+    torch.hub.set_dir('tmp/')
     parser = argparse.ArgumentParser('DINO4K', parents=[get_args_parser()])
     args = parser.parse_args()
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)

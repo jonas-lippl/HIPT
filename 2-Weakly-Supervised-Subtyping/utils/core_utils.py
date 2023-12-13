@@ -1,6 +1,10 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn.functional as F
+from pamly import Diagnosis
+from torch.utils.data import DataLoader
+
 from utils.utils import *
 import os
 import torch.nn.functional as F
@@ -14,6 +18,16 @@ from models.model_hierarchical_mil import HIPT_None_FC, HIPT_LGP_FC, HIPT_GP_FC
 from sklearn.preprocessing import label_binarize
 from sklearn.metrics import roc_auc_score, roc_curve
 from sklearn.metrics import auc as calc_auc
+
+INT2STR_LABEL_MAP = {
+    int(Diagnosis("Unknown")): "Unknown",
+    int(Diagnosis("HL")): "HL",
+    int(Diagnosis("DLBCL")): "DLBCL",
+    int(Diagnosis("CLL")): "CLL",
+    int(Diagnosis("FL")): "FL",
+    int(Diagnosis("MCL")): "MCL",
+    int(Diagnosis("LTDS")): "Lts",
+}
 
 import sys
 #from utils.gpu_utils import gpu_profile, print_gpu_mem
@@ -114,11 +128,11 @@ def train(datasets, cur, args):
         writer = None
 
     print('\nInit train/val/test splits...', end=' ')
-    train_split, val_split, test_split = datasets
-    save_splits(datasets, ['train', 'val', 'test'], os.path.join(args.results_dir, 'splits_{}.csv'.format(cur)))
+    train_split, test_split = datasets
+    # save_splits(datasets, ['train', 'val', 'test'], os.path.join(args.results_dir, 'splits_{}.csv'.format(cur)))
     print('Done!')
     print("Training on {} samples".format(len(train_split)))
-    print("Validating on {} samples".format(len(val_split)))
+    # print("Validating on {} samples".format(len(val_split)))
     print("Testing on {} samples".format(len(test_split)))
 
     print('\nInit loss function...', end=' ')
@@ -196,9 +210,11 @@ def train(datasets, cur, args):
     print('Done!')
     
     print('\nInit Loaders...', end=' ')
-    train_loader = get_split_loader(train_split, training=True, testing = args.testing, weighted = args.weighted_sample, mode=args.mode)
-    val_loader = get_split_loader(val_split,  testing = args.testing, mode=args.mode)
-    test_loader = get_split_loader(test_split, testing = args.testing, mode=args.mode)
+    # train_loader = get_split_loader(train_split, training=True, testing = args.testing, weighted = args.weighted_sample, mode=args.mode)
+    # val_loader = get_split_loader(val_split,  testing = args.testing, mode=args.mode)
+    # test_loader = get_split_loader(test_split, testing = args.testing, mode=args.mode)
+    train_loader = DataLoader(train_split, batch_size=1, shuffle=True, num_workers=8)
+    test_loader = DataLoader(test_split, batch_size=1, shuffle=False, num_workers=8)
     print('Done!')
 
     print('\nSetup EarlyStopping...', end=' ')
@@ -213,11 +229,11 @@ def train(datasets, cur, args):
         if args.model_type in ['clam_sb', 'clam_mb'] and not args.no_inst_cluster:
             train_loop_clam(epoch, model, train_loader, optimizer, args.n_classes, args.bag_weight, writer, loss_fn, dropinput=args.dropinput)
             
-            stop = validate_clam(cur, epoch, model, val_loader, args.n_classes, 
+            stop = validate_clam(cur, epoch, model, test_loader, args.n_classes,
                 early_stopping, writer, loss_fn, args.results_dir)
         else:
             train_loop(epoch, model, train_loader, optimizer, args.n_classes, writer, loss_fn)
-            stop = validate(cur, epoch, model, val_loader, args.n_classes, 
+            stop = validate(cur, epoch, model, test_loader, args.n_classes,
                 early_stopping, writer, loss_fn, args.results_dir)
         
         if stop: 
@@ -228,7 +244,7 @@ def train(datasets, cur, args):
     else:
         torch.save(model.state_dict(), os.path.join(args.results_dir, "s_{}_checkpoint.pt".format(cur)))
 
-    _, val_error, val_auc, _= summary(model, val_loader, args.n_classes)
+    _, val_error, val_auc, _= summary(model, test_loader, args.n_classes)
     print('Val error: {:.4f}, ROC AUC: {:.4f}'.format(val_error, val_auc))
 
     results_dict, test_error, test_auc, acc_logger = summary(model, test_loader, args.n_classes)
@@ -247,7 +263,7 @@ def train(datasets, cur, args):
         writer.add_scalar('final/test_error', test_error, 0)
         writer.add_scalar('final/test_auc', test_auc, 0)
     
-    writer.close()
+        writer.close()
     return results_dict, test_auc, val_auc, 1-test_error, 1-val_error 
 
 
@@ -313,7 +329,7 @@ def validate(cur, epoch, model, loader, n_classes, early_stopping = None, writer
     val_loss = 0.
     val_error = 0.
     
-    prob = np.zeros((len(loader), n_classes))
+    prob = np.zeros((len(loader), n_classes-1))
     labels = np.zeros(len(loader))
 
     with torch.no_grad():
@@ -330,14 +346,16 @@ def validate(cur, epoch, model, loader, n_classes, early_stopping = None, writer
             acc_logger.log(Y_hat, label)
             
             loss = loss_fn(logits, label)
-
-            prob[batch_idx] = Y_prob.cpu().numpy()
+            # TODO: Remove when samples with label "Unknown" are in data
+            # Remove Unknown class from predictions since it does not occur an therefore auc calculation fails. Softmax necess
+            prob[batch_idx] = F.softmax(Y_prob[:, 1:], dim=1).cpu().numpy()
+            # prob[batch_idx] = Y_prob,.cpu().numpy()
             labels[batch_idx] = label.item()
             
             val_loss += loss.item()
             error = calculate_error(Y_hat, label)
             val_error += error
-            
+
 
     val_error /= len(loader)
     val_loss /= len(loader)
@@ -554,7 +572,7 @@ def summary(model, loader, n_classes):
     all_probs = np.zeros((len(loader), n_classes))
     all_labels = np.zeros(len(loader))
 
-    slide_ids = loader.dataset.slide_data['slide_id']
+    # slide_ids = loader.dataset.slide_data['slide_id']
     patient_results = {}
 
     for batch_idx, batch in enumerate(loader):
@@ -568,17 +586,18 @@ def summary(model, loader, n_classes):
 
         #data, label = data.to(device), label.to(device)
         
-        slide_id = slide_ids.iloc[batch_idx]
+        # slide_id = slide_ids.iloc[batch_idx]
         with torch.no_grad():
             logits, Y_prob, Y_hat, _, _ = model(data, cluster_id=cluster_id)
             #logits, Y_prob, Y_hat, _, _ = model(data)
 
         acc_logger.log(Y_hat, label)
         probs = Y_prob.cpu().numpy()
+        # probs = F.softmax(Y_prob[:, 1:], dim=1).cpu().numpy()
         all_probs[batch_idx] = probs
         all_labels[batch_idx] = label.item()
         
-        patient_results.update({slide_id: {'slide_id': np.array(slide_id), 'prob': probs, 'label': label.item()}})
+        # patient_results.update({slide_id: {'slide_id': np.array(slide_id), 'prob': probs, 'label': label.item()}})
         error = calculate_error(Y_hat, label)
         test_error += error
 
@@ -590,13 +609,22 @@ def summary(model, loader, n_classes):
     else:
         aucs = []
         binary_labels = label_binarize(all_labels, classes=[i for i in range(n_classes)])
+        print(binary_labels.shape)
+        print("Binary labels: ", binary_labels)
         for class_idx in range(n_classes):
             if class_idx in all_labels:
-                fpr, tpr, _ = roc_curve(binary_labels[:, class_idx], all_probs[:, class_idx])
-                print(calc_auc(fpr, tpr))
+                fpr, tpr, thresholds = roc_curve(binary_labels[:, class_idx], all_probs[:, class_idx])
+                print(f"Class {class_idx}: \nfpr: {fpr} \ntpr: {tpr} \nauc: {calc_auc(fpr, tpr)} \nusing thresholds: {thresholds}")
                 aucs.append(calc_auc(fpr, tpr))
+                plt.plot(fpr, tpr)
+                plt.xlim([0.0, 1.0])
+                plt.ylim([0.0, 1.05])
+                plt.xlabel('False Positive Rate')
+                plt.ylabel('True Positive Rate')
+                plt.title(f'Receiver Operating Characteristic of Class {class_idx}={INT2STR_LABEL_MAP[class_idx]}')
+                plt.savefig(f'results/roc_curve_class_{class_idx}={INT2STR_LABEL_MAP[class_idx]}.png')
             else:
-                print('nan')
+                print('Class index does not occur in labels')
                 aucs.append(float('nan'))
 
         auc = np.nanmean(np.array(aucs))
