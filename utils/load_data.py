@@ -9,7 +9,7 @@ from utils.iterable_blob_dataset import IterableBlobDataset
 from utils.split_blob import get_number_of_samples_per_blob
 
 
-class Custom_folder_DS(Dataset):
+class CustomFolderDs(Dataset):
     def __init__(self, path, names, transform=None):
         self.names = names
         self.path = path
@@ -25,8 +25,20 @@ class Custom_folder_DS(Dataset):
         return data[0].div(255.0), data[1]
 
 
-# NOTE: This took 1124.35 seconds per epoch for 3000 patches
-def load_lymphoma_data(batch_size, mode='train', ppb=10000):
+class EmbeddingDS(Dataset):
+    def __init__(self, path, names):
+        self.names = names
+        self.path = path
+
+    def __len__(self):
+        return len(self.names)
+
+    def __getitem__(self, idx):
+        data = torch.load(self.path + "/" + self.names[idx])
+        return data[0], data[1]
+
+
+def load_lymphoma_data(batch_size, mode='train'):
     path_to_data = f"/data"
     filename_splits = "splits.csv"
     train_lenghts, val_lenghts, test_lengths = get_number_of_samples_per_blob(path_to_data, filename_splits)
@@ -50,9 +62,23 @@ def load_lymphoma_data_single_patches(batch_size, mode='train'):
     val_patches = patches[int(0.8 * len(patches)):]
     print(f"Total number of training samples: {len(train_patches)}")
     transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    dataset = Custom_folder_DS(path_to_data, train_patches,
-                               transform=transform) if mode == 'train' else Custom_folder_DS(path_to_data,
-                                                                                             val_patches,
-                                                                                             transform=transform)
+    dataset = CustomFolderDs(path_to_data, train_patches,
+                             transform=transform) if mode == 'train' else CustomFolderDs(path_to_data,
+                                                                                         val_patches,
+                                                                                         transform=transform)
+    return DataLoader(dataset, sampler=DistributedSampler(dataset), batch_size=batch_size, drop_last=False,
+                      num_workers=4)
+
+
+def load_lymphoma_data_single_patch_embeddings(batch_size, mode='train'):
+    path_to_data = f"/data"
+    patches = [file for file in os.listdir(path_to_data)]
+    train_patches = patches[:int(0.8 * len(patches))]
+    val_patches = patches[int(0.8 * len(patches)):]
+    if mode == 'train':
+        print(f"Total number of training samples: {len(train_patches)}")
+    else:
+        print(f"Total number of test samples: {len(val_patches)}")
+    dataset = EmbeddingDS(path_to_data, train_patches) if mode == 'train' else EmbeddingDS(path_to_data, val_patches)
     return DataLoader(dataset, sampler=DistributedSampler(dataset), batch_size=batch_size, drop_last=False,
                       num_workers=4)

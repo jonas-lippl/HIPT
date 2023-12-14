@@ -25,8 +25,8 @@ class HIPT_4K(torch.nn.Module):
 	"""
 
     def __init__(self,
-                 model256_path: str = '../Checkpoints/vit256_small_dino.pth',
-                 model4k_path: str = '../Checkpoints/vit4k_xs_dino.pth',
+                 model256_path: str = '../ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
+                 model4k_path: str = '../ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
                  device256=torch.device('cuda:0'),
                  device4k=torch.device('cuda:1')):
 

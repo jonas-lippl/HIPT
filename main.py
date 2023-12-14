@@ -1,44 +1,68 @@
 import argparse
+import math
 import os
 import time
 
 import numpy as np
 import pandas as pd
+from sklearn.utils import class_weight
 from torch.backends import cudnn
 from torch.distributed import init_process_group, destroy_process_group
+import torch.nn.functional as F
 
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.optim.lr_scheduler import LambdaLR
 
 from HIPT_4K.hipt_4k import HIPT_4K
-from utils.load_data import load_lymphoma_data, load_lymphoma_data_single_patches
+from utils.load_data import load_lymphoma_data, load_lymphoma_data_single_patches, \
+    load_lymphoma_data_single_patch_embeddings
 
 """
-screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096_px_2048mu:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=8; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096px_2048mu_embeddings:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='HIPT training for lymphoma images')
-parser.add_argument('--epochs', type=int, default=30, metavar='N', help='total epochs for training')
-parser.add_argument('--lr', type=float, default=0.001, metavar='LR', help='learning rate')
+parser.add_argument('--epochs', type=int, default=100, metavar='N', help='total epochs for training')
+parser.add_argument('--lr', type=float, default=0.005, metavar='LR', help='learning rate')
 parser.add_argument('--batch_size', type=int, default=8, metavar='N', help='batch size')
-parser.add_argument('--save_folder', type=str, default='hipt_4k_35000_patches_2048um_frozen_transformer_normalized_images',
+parser.add_argument('--save_folder', type=str, default='hipt_4k_35000_patches_2048um_class_weights',
                     metavar='N', help='save folder')
 parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', help='warmup epochs')
 parser.add_argument('--save_every', type=int, default=5, metavar='N', help='save every x epochs')
-parser.add_argument('--test_every', type=int, default=1, metavar='N', help='test every x epochs')
+parser.add_argument('--test_every', type=int, default=10, metavar='N', help='test every x epochs')
+
+
+def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=0.5, last_epoch=-1):
+    """ Create a schedule with a learning rate that decreases following the
+    values of the cosine function between 0 and `pi * cycles` after a warmup
+    period during which it increases linearly between 0 and 1.
+    """
+
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
 class ClassificationHead(torch.nn.Module):
     def __init__(self):
         super().__init__()
-        self.fc1 = torch.nn.Linear(192, 100)
-        self.fc2 = torch.nn.Linear(100, 7)
+        self.fc1 = torch.nn.Linear(192, 7)
+        # self.fc3 = torch.nn.Linear(100, 100)
+        # self.fc2 = torch.nn.Linear(100, 7)
+        # self.dropout = torch.nn.Dropout(0.25)
 
     def forward(self, x):
+        # print(x.shape)
         x = self.fc1(x)
-        x = torch.nn.functional.relu(x)
-        x = self.fc2(x)
-        return x
+        # x = torch.nn.functional.relu(x)
+        # x = self.dropout(x)
+        # x = self.fc2(x)
+        return F.softmax(x, dim=1), torch.topk(x, 1).indices.squeeze()
 
 
 def ddp_setup():
@@ -66,14 +90,14 @@ def general_setup(seed: int = 1, benchmark=True, hub_dir: str = 'tmp/'):
 
 
 class Trainer:
-    def __init__(self, feature_extractor, classifier, optimizer, train_loader, val_loader, epochs, lr, batch_size, save_path,
-                 save_every, test_every):
+    def __init__(self, classifier, optimizer, scheduler, train_loader, val_loader, epochs, lr, batch_size, save_path,
+                 save_every, test_every, loss_fn):
         self.gpu_id = int(os.environ["LOCAL_RANK"])
-        self.feature_extractor = feature_extractor
+        # self.feature_extractor = feature_extractor
         # self.feature_extractor = DDP(feature_extractor, device_ids=[self.gpu_id])
         self.classifier = DDP(classifier, device_ids=[self.gpu_id])
         self.optimizer = optimizer
-        # self.scheduler = scheduler
+        self.scheduler = scheduler
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.epochs = epochs
@@ -86,34 +110,32 @@ class Trainer:
         self.statistics = {'epoch': [], 'train_loss': [], 'train_acc': [], 'val_acc': []}
         self.training_corrects = 0
         self.validation_corrects = 0
-        self.loss_fn = torch.nn.CrossEntropyLoss()
+        self.loss_fn = loss_fn
 
     def _run_batch(self, X: torch.Tensor, y: torch.Tensor):
         self.optimizer.zero_grad()
-        with torch.no_grad():
-            feat = self.feature_extractor.forward(X)
-        out = self.classifier.forward(feat)
-        predicted_labels = torch.argmax(out, dim=1)
-        self.training_corrects += torch.sum(predicted_labels == y)
-        loss = self.loss_fn(out, y)
-        self.intermediate_losses.append(loss.item())
+        # with torch.no_grad():
+        #     feat = self.feature_extractor.forward(X)
+        prob, pred = self.classifier.forward(X)
+        self.training_corrects += torch.sum(pred == y)
+        loss = self.loss_fn(prob, y)
         loss.backward()
+        self.intermediate_losses.append(loss.item())
         self.optimizer.step()
 
         # Free up memory
-        del feat, out, predicted_labels, loss
-        torch.cuda.empty_cache()
+        # del feat, out, predicted_labels, loss
+        # torch.cuda.empty_cache()
 
     def _run_validation_batch(self, X: torch.Tensor, y: torch.Tensor):
         with torch.no_grad():
-            feat = self.feature_extractor.forward(X)
-            out = self.classifier.forward(feat)
-        predicted_labels = torch.argmax(out, dim=1)
-        self.validation_corrects += torch.sum(predicted_labels == y)
+            # feat = self.feature_extractor.forward(X)
+            prob, pred = self.classifier.forward(X)
+            self.validation_corrects += torch.sum(pred == y)
 
         # Free up memory
-        del feat, out, predicted_labels
-        torch.cuda.empty_cache()
+        # del feat, out, predicted_labels
+        # torch.cuda.empty_cache()
 
     def _run_epoch(self, epoch):
         b_sz = len(next(iter(self.train_loader))[0])
@@ -158,7 +180,7 @@ class Trainer:
             start = time.time()
             self._run_epoch(epoch)
             end = time.time()
-            # self.scheduler.step()
+            self.scheduler.step()
             if self.gpu_id == 0:
                 print(f"Epoch {epoch} took {round(end - start, 2)} seconds")
             if epoch % self.save_every == 0:
@@ -178,18 +200,28 @@ def main():
     ddp_setup()
     # train_loader = load_lymphoma_data(args.batch_size, mode='train')
     # test_loader = load_lymphoma_data(args.batch_size, mode='test')
-    train_loader = load_lymphoma_data_single_patches(args.batch_size, mode='train')
-    test_loader = load_lymphoma_data_single_patches(args.batch_size, mode='test')
-    feature_extractor = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]))
+    # train_loader = load_lymphoma_data_single_patches(args.batch_size, mode='train')
+    # test_loader = load_lymphoma_data_single_patches(args.batch_size, mode='test')
+    train_loader = load_lymphoma_data_single_patch_embeddings(args.batch_size, mode='train')
+    test_loader = load_lymphoma_data_single_patch_embeddings(args.batch_size, mode='test')
+    # feature_extractor = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]))
     classifier = ClassificationHead().to(int(os.environ["LOCAL_RANK"]))
     optimizer = torch.optim.Adam(classifier.parameters(), lr=args.lr, weight_decay=0.05)
-    # scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
-    #                                             num_training_steps=args.epochs)
+    scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
+                                                num_training_steps=args.epochs)
+    y = np.array([y.numpy() for _, y in train_loader.dataset])  # replace this with your labels
+
+    class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y), y=y)
+    class_weights = [1, *class_weights]
+
+    # Convert class weights to tensor
+    class_weights = torch.tensor(class_weights, dtype=torch.float)
+    print("Class weights: ", class_weights)
     trainer = Trainer(
-        feature_extractor=feature_extractor,
+        # feature_extractor=feature_extractor,
         classifier=classifier,
         optimizer=optimizer,
-        # scheduler=scheduler,
+        scheduler=scheduler,
         train_loader=train_loader,
         val_loader=test_loader,
         epochs=args.epochs,
@@ -198,6 +230,7 @@ def main():
         save_path=args.save_folder,
         save_every=args.save_every,
         test_every=args.test_every,
+        loss_fn=torch.nn.CrossEntropyLoss(weight=class_weights.to(int(os.environ["LOCAL_RANK"])))
     )
     trainer.train()
 
