@@ -13,10 +13,14 @@ import vision_transformer4k as vits4k
 import pamly
 
 """
-screen -dmS generate_patch_embeddings_0 sh -c 'docker run --gpus \"device=0\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 0 --stop 50; exec bash'
-screen -dmS generate_patch_embeddings_1 sh -c 'docker run --gpus \"device=1\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 50 --stop 100; exec bash'
-screen -dmS generate_patch_embeddings_2 sh -c 'docker run --gpus \"device=2\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 100 --stop 150; exec bash'
-screen -dmS generate_patch_embeddings_3 sh -c 'docker run --gpus \"device=3\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 150 --stop 200; exec bash'
+screen -dmS generate_patch_embeddings_0 sh -c 'docker run --gpus \"device=0\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 0 --stop 33; exec bash'
+screen -dmS generate_patch_embeddings_1 sh -c 'docker run --gpus \"device=1\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 33 --stop 66; exec bash'
+screen -dmS generate_patch_embeddings_2 sh -c 'docker run --gpus \"device=2\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 66 --stop 99; exec bash'
+screen -dmS generate_patch_embeddings_3 sh -c 'docker run --gpus \"device=3\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 99 --stop 132; exec bash'
+screen -dmS generate_patch_embeddings_4 sh -c 'docker run --gpus \"device=4\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 132 --stop 165; exec bash'
+screen -dmS generate_patch_embeddings_5 sh -c 'docker run --gpus \"device=5\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 165 --stop 198; exec bash'
+screen -dmS generate_patch_embeddings_6 sh -c 'docker run --gpus \"device=6\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 198 --stop 231; exec bash'
+screen -dmS generate_patch_embeddings_7 sh -c 'docker run --gpus \"device=7\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 231 --stop 264; exec bash'
 """
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -85,20 +89,25 @@ def main(args):
     count = 0
 
     transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-
-    wsis = [wsi for wsi in os.listdir("/data/WSI_patches_4096px_2048mu")]
+    # For wsis with 0 overlap between 4k patches:
+    # wsi_dir = "/data/WSI_patches_4096px_2048mu"
+    # wsi_embedding_dir = "/data/WSI_patches_4096px_2048mu_4k_embeddings"
+    # For wsis with 0.5 overlap between 4k patches:
+    wsi_dir = "/data/WSI_patches_4096px_2048mu_0.5overlap"
+    wsi_embedding_dir = "/data/WSI_patches_4096px_2048mu_0.5overlap_4k_embeddings"
+    wsis = [wsi for wsi in os.listdir(wsi_dir)]
     with torch.no_grad():
         for wsi in tqdm(wsis[args.start:args.stop]):
-            if os.path.exists(os.path.join("/data/WSI_patches_4096px_2048mu_4k_embeddings", f"{wsi}.pt")):
+            os.makedirs(wsi_embedding_dir, exist_ok=True)
+            if os.path.exists(os.path.join(wsi_embedding_dir, f"{wsi}.pt")):
                 continue
-            os.makedirs("/data/WSI_patches_4096px_2048mu_4k_embeddings", exist_ok=True)
-            patches = os.listdir(os.path.join("/data/WSI_patches_4096px_2048mu", wsi))
+            patches = os.listdir(os.path.join(wsi_dir, wsi))
             print(f"Processing {wsi} with {len(patches)} patches.")
             num_patches = len(patches)
             embeddings = torch.zeros((num_patches, 192))
-            label = LABELS_MAP[wsi.split("-")[-1]]
+            label = torch.tensor(LABELS_MAP[wsi.split("-")[-1]])
             for k, patch in enumerate(patches):
-                img_4096 = torch.load(os.path.join(os.path.join("/data/WSI_patches_4096px_2048mu", wsi), patch))
+                img_4096 = torch.load(os.path.join(os.path.join(wsi_dir, wsi), patch))
                 batch = torch.zeros((256, 3, 256, 256))
                 for i in range(16):
                     for j in range(16):
@@ -107,7 +116,7 @@ def main(args):
                 out = out.unfold(0, 16, 16).transpose(0,1)
                 out = vit4k(out.unsqueeze(dim=0)).squeeze(dim=0).cpu()
                 embeddings[k] = out
-            torch.save((embeddings, label), os.path.join("/data/WSI_patches_4096px_2048mu_4k_embeddings", f"{wsi}.pt"))
+            torch.save((embeddings, label), os.path.join(wsi_embedding_dir, f"{wsi}.pt"))
             count += 1
             if count % 10 == 0:
                 print(f"Saved {count} patch 4k embeddings.")

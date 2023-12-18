@@ -3,7 +3,6 @@ import os
 
 import torch
 from pamly import Diagnosis
-from torchvision import models as torchvision_models
 from torchvision import transforms
 from tqdm import tqdm
 

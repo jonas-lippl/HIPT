@@ -38,7 +38,7 @@ from vision_transformer4k import DINOHead
 from einops import rearrange, repeat, reduce
 
 """
-screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/256x384_embedding_tokens:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit4k_xs --data_path /data/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs/ --epochs 100 --batch_size_per_gpu 64; exec bash'
+screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/256x384_embedding_tokens:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit4k_xs --data_path /data/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs_additional_data/ --epochs 100 --batch_size_per_gpu 64; exec bash'
 """
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__

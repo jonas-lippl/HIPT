@@ -30,6 +30,24 @@ The embeddings are then used to train the final VitWSI model.
 screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=0\" -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
 ```
 
+## WSI-Classification using 4k patches, pretrained Vit256 and Vit4k and a fully connected layer.
+Instead of training the final VitWSI model, we can also use the embeddings to train a fully connected layer for classification based on the 4k patches.
+To make this code run fast we prepare the embeddings beforehand and store them in a `.pt` file. The script `prepare_4k_embedding_tokens_for_FC.py` is used to generate those embeddings.
 
-## Classification using 4k patches, pretrained Vit256 and Vit4k and a fully connected layer.
+
+The embeddings are stored in the folder `blobyfire/data/single_4096px_2048mu_embeddings`.
+To train the fully connected layer we use the script `main.py`.
+
+```bash
+screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096px_2048mu_embeddings:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_4k_extra_data; exec bash'
+```
+
+Now we can use the trained model to classify the WSIs using a majority vote of the 4k patches. The script `inference_with_majority_vote.py` is used to generate the predictions.
+
+
+## Open Questions
++ Can we use a Resnet/Convolutional model to generate the 256px embeddings?
++ Can we train the final transformer with enough data?
++ Is the performance better if we train on balanced data? Currently, the HL class is overrepresented.
++ Can we finetune all parts of the model in an end-to-end fashion using the labels? Right now we pretrain the transformer models and then train only the fully connected layer.
 

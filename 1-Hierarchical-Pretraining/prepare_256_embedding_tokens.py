@@ -50,21 +50,24 @@ def main():
 
     transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
-    patches = [patch for patch in os.listdir("/data/single_4096_px_2048mu") if patch.startswith("patch")]
-    with torch.no_grad():
-        for patch in tqdm(patches[12000:]):
-            name = patch.split(".")[0]
-            file = os.path.join(patch_dir, f"{name}_256x384_embedding.pt")
-            if os.path.exists(file):
-                continue
-            img_4096, _ = torch.load(os.path.join("/data/single_4096_px_2048mu", patch))
-            batch = torch.zeros((256, 3, 256, 256))
-            for i in range(16):
-                for j in range(16):
-                    batch[i * 16 + j] = transform(img_4096[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
-            out = teacher(batch.to(device)).to('cpu')
-            torch.save(out, file)
-            count += 1
+    wsis = [wsi for wsi in os.listdir("/data/WSI_patches_4096px_2048mu")]
+    for wsi in tqdm(wsis):
+        patches = [patch for patch in os.listdir("/data/WSI_patches_4096px_2048mu/"+wsi)]
+        with torch.no_grad():
+            for patch in patches:
+                name = patch.split(".")[0]
+                file = os.path.join(patch_dir, f"{name}_256x384_embedding.pt")
+                if os.path.exists(file):
+                    print(f"Skipping {file}")
+                    continue
+                img_4096 = torch.load(os.path.join("/data/WSI_patches_4096px_2048mu/"+wsi, patch))
+                batch = torch.zeros((256, 3, 256, 256))
+                for i in range(16):
+                    for j in range(16):
+                        batch[i * 16 + j] = transform(img_4096[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
+                out = teacher(batch.to(device)).to('cpu')
+                torch.save(out, file)
+                count += 1
             if count % 100 == 0:
                 print(f"Saved {count} patch embeddings.")
         print(f"Saved {count} patch embeddings.")

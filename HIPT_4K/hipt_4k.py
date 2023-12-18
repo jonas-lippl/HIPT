@@ -18,6 +18,23 @@ from HIPT_4K.hipt_heatmap_utils import *
 from HIPT_4K.hipt_model_utils import get_vit256, get_vit4k, tensorbatch2im, eval_transforms
 
 
+class ClassificationHead(torch.nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.fc1 = torch.nn.Linear(192, 7)
+        # self.fc3 = torch.nn.Linear(100, 100)
+        # self.fc2 = torch.nn.Linear(100, 7)
+        # self.dropout = torch.nn.Dropout(0.25)
+
+    def forward(self, x):
+        # print(x.shape)
+        x = self.fc1(x)
+        # x = torch.nn.functional.relu(x)
+        # x = self.dropout(x)
+        # x = self.fc2(x)
+        return F.softmax(x, dim=1), torch.topk(x, 1).indices.squeeze()
+
+
 class HIPT_4K(torch.nn.Module):
     """
 	HIPT Model (ViT-4K) for encoding non-square images (with [256 x 256] patch tokens), with 
@@ -25,8 +42,9 @@ class HIPT_4K(torch.nn.Module):
 	"""
 
     def __init__(self,
-                 model256_path: str = '../ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
-                 model4k_path: str = '../ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
+                 model256_path: str = 'HIPT_4K/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
+                 model4k_path: str = 'HIPT_4K/ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
+
                  device256=torch.device('cuda:0'),
                  device4k=torch.device('cuda:1')):
 
@@ -35,7 +53,9 @@ class HIPT_4K(torch.nn.Module):
         self.model4k = get_vit4k(pretrained_weights=model4k_path).to(device4k)
         self.device256 = device256
         self.device4k = device4k
-        # self.fc = torch.nn.Linear(192, 7).to(device4k)
+        self.fc = ClassificationHead()
+        self.fc.load_state_dict(torch.load("/mnt/experiments/hipt_4k_35000_patches_2048um/classifier.pt"))
+        self.fc.to(device4k)
 
     def forward(self, x):
         """
@@ -57,7 +77,6 @@ class HIPT_4K(torch.nn.Module):
         batch_256 = batch_256.unfold(2, 256, 256).unfold(3, 256, 256)  # 2. [1 x 3 x w_256 x h_256 x 256 x 256]
         batch_256 = rearrange(batch_256,
                               'b c p1 p2 w h -> (b p1 p2) c w h')  # 2. [B x 3 x 256 x 256], where B = (batch_size*w_256*h_256)
-
         features_cls256 = []
         for mini_bs in range(0, batch_256.shape[0],
                              256):  # 3. B may be too large for ViT-256. We further take minibatches of 256.
@@ -70,9 +89,10 @@ class HIPT_4K(torch.nn.Module):
         features_cls256 = features_cls256.reshape(batch_size, w_256, h_256, 384).transpose(1, 2).transpose(1, 3)
         features_cls256 = features_cls256.to(self.device4k, non_blocking=True)  # 4. [1 x 384 x w_256 x h_256]
         features_cls4k = self.model4k.forward(features_cls256)  # 5. [1 x 192], where 192 == dim of ViT-4K [ClS] token.
-        # output = self.fc(features_cls4k)  # Pass the output through the fully connected layer
-        # return output
-        return features_cls4k
+        output = self.fc(features_cls4k)  # Pass the output through the fully connected layer
+        return output
+        # return features_cls4k
+
     def forward_asset_dict(self, x: torch.Tensor):
         """
 		Forward pass of HIPT (given an image tensor x), with certain intermediate representations saved in 

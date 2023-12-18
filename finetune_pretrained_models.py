@@ -5,28 +5,25 @@ import time
 
 import numpy as np
 import pandas as pd
-from sklearn.utils import class_weight
 from torch.backends import cudnn
 from torch.distributed import init_process_group, destroy_process_group
-import torch.nn.functional as F
 
 import torch
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.optim.lr_scheduler import LambdaLR
 
-from HIPT_4K.hipt_4k import HIPT_4K, ClassificationHead
-from utils.load_data import load_lymphoma_data, load_lymphoma_data_single_patches, \
-    load_lymphoma_data_single_patch_embeddings
+from HIPT_4K.hipt_4k import HIPT_4K
+from utils.load_data import load_lymphoma_data_single_patches
 
 """
-screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096px_2048mu_embeddings:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_4k_extra_data; exec bash'
+screen -dmS hipt_finetune sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096_px_2048mu:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/finetune_pretrained_models.py --batch_size=8 --save_folder=hipt_4k_finetune_full_model; exec bash'
 """
 
-parser = argparse.ArgumentParser(description='HIPT training for lymphoma images')
-parser.add_argument('--epochs', type=int, default=100, metavar='N', help='total epochs for training')
-parser.add_argument('--lr', type=float, default=0.005, metavar='LR', help='learning rate')
-parser.add_argument('--batch_size', type=int, default=8, metavar='N', help='batch size')
-parser.add_argument('--save_folder', type=str, default='hipt_4k_35000_patches_2048um_class_weights',
+parser = argparse.ArgumentParser(description='HIPT finetuning on lymphoma images')
+parser.add_argument('--epochs', type=int, default=40, metavar='N', help='total epochs for training')
+parser.add_argument('--lr', type=float, default=0.001, metavar='LR', help='learning rate')
+parser.add_argument('--batch_size', type=int, default=1, metavar='N', help='batch size')
+parser.add_argument('--save_folder', type=str, default='hipt_4k_finetune_full_model',
                     metavar='N', help='save folder')
 parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', help='warmup epochs')
 parser.add_argument('--save_every', type=int, default=5, metavar='N', help='save every x epochs')
@@ -57,7 +54,7 @@ def dump_args(args):
     """
     Dump all arguments to a text file.
     """
-    with open(f"{args.save_folder}/args.txt", 'w') as f:
+    with open(f"/experiments/{args.save_folder}/args.txt", 'w') as f:
         for arg in vars(args):
             f.write(f"{arg}: {getattr(args, arg)}\n")
 
@@ -73,12 +70,10 @@ def general_setup(seed: int = 1, benchmark=True, hub_dir: str = 'tmp/'):
 
 
 class Trainer:
-    def __init__(self, classifier, optimizer, scheduler, train_loader, val_loader, epochs, lr, batch_size, save_path,
+    def __init__(self, model, optimizer, scheduler, train_loader, val_loader, epochs, lr, batch_size, save_path,
                  save_every, test_every, loss_fn):
         self.gpu_id = int(os.environ["LOCAL_RANK"])
-        # self.feature_extractor = feature_extractor
-        # self.feature_extractor = DDP(feature_extractor, device_ids=[self.gpu_id])
-        self.classifier = DDP(classifier, device_ids=[self.gpu_id])
+        self.model = DDP(model, device_ids=[self.gpu_id])
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.train_loader = train_loader
@@ -97,9 +92,7 @@ class Trainer:
 
     def _run_batch(self, X: torch.Tensor, y: torch.Tensor):
         self.optimizer.zero_grad()
-        # with torch.no_grad():
-        #     feat = self.feature_extractor.forward(X)
-        prob, pred = self.classifier.forward(X)
+        prob, pred = self.model.forward(X)
         self.training_corrects += torch.sum(pred == y)
         loss = self.loss_fn(prob, y)
         loss.backward()
@@ -107,18 +100,17 @@ class Trainer:
         self.optimizer.step()
 
         # Free up memory
-        # del feat, out, predicted_labels, loss
-        # torch.cuda.empty_cache()
+        del prob, pred, loss
+        torch.cuda.empty_cache()
 
     def _run_validation_batch(self, X: torch.Tensor, y: torch.Tensor):
         with torch.no_grad():
-            # feat = self.feature_extractor.forward(X)
-            prob, pred = self.classifier.forward(X)
+            prob, pred = self.model.forward(X)
             self.validation_corrects += torch.sum(pred == y)
 
         # Free up memory
-        # del feat, out, predicted_labels
-        # torch.cuda.empty_cache()
+        del prob, pred
+        torch.cuda.empty_cache()
 
     def _run_epoch(self, epoch):
         b_sz = len(next(iter(self.train_loader))[0])
@@ -127,7 +119,7 @@ class Trainer:
         total_len_train_data, total_len_validation_data = 0, 0
         self.train_loader.sampler.set_epoch(epoch)
         self.statistics['epoch'].append(epoch)
-        self.classifier.train()
+        self.model.train()
         for X, y in self.train_loader:
             total_len_train_data += len(y)
             print(
@@ -143,7 +135,7 @@ class Trainer:
         print(f"[GPU{self.gpu_id}] Training accuracy: {train_acc}")
         self.statistics['train_acc'].append(train_acc)
 
-        self.classifier.eval()
+        self.model.eval()
         if epoch % self.test_every == 0:
             self.val_loader.sampler.set_epoch(epoch)
             with torch.no_grad():
@@ -172,7 +164,11 @@ class Trainer:
     def save_data(self):
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path, exist_ok=True)
-        torch.save(self.classifier.module.state_dict(), f"{self.save_path}/classifier.pt")
+        torch.save(self.model.module.state_dict(), f"{self.save_path}/model.pt")
+        # Save building block from model separately
+        torch.save(self.model.module.model256.state_dict(), f"{self.save_path}/model256.pt")
+        torch.save(self.model.module.model4k.state_dict(), f"{self.save_path}/model4k.pt")
+        torch.save(self.model.module.fc.state_dict(), f"{self.save_path}/classifier.pt")
         df = pd.DataFrame(self.statistics)
         df.to_csv(f"{self.save_path}/statistics_gpu_{self.gpu_id}.csv", index=False)
 
@@ -181,28 +177,16 @@ def main():
     args = parser.parse_args()
     general_setup()
     ddp_setup()
-    # train_loader = load_lymphoma_data(args.batch_size, mode='train')
-    # test_loader = load_lymphoma_data(args.batch_size, mode='test')
-    # train_loader = load_lymphoma_data_single_patches(args.batch_size, mode='train')
-    # test_loader = load_lymphoma_data_single_patches(args.batch_size, mode='test')
-    train_loader = load_lymphoma_data_single_patch_embeddings(args.batch_size, mode='train')
-    test_loader = load_lymphoma_data_single_patch_embeddings(args.batch_size, mode='test')
-    # feature_extractor = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]))
-    classifier = ClassificationHead().to(int(os.environ["LOCAL_RANK"]))
-    optimizer = torch.optim.Adam(classifier.parameters(), lr=args.lr, weight_decay=0.05)
+    train_loader = load_lymphoma_data_single_patches(args.batch_size, mode='train')
+    test_loader = load_lymphoma_data_single_patches(args.batch_size, mode='test')
+    model = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]))
+    # classifier = ClassificationHead().to(int(os.environ["LOCAL_RANK"]))
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.05)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
                                                 num_training_steps=args.epochs)
-    # y = np.array([y.numpy() for _, y in train_loader.dataset])  # replace this with your labels
-    #
-    # class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y), y=y)
-    # class_weights = [1, *class_weights]
-    #
-    # # Convert class weights to tensor
-    # class_weights = torch.tensor(class_weights, dtype=torch.float)
-    # print("Class weights: ", class_weights)
+
     trainer = Trainer(
-        # feature_extractor=feature_extractor,
-        classifier=classifier,
+        model=model,
         optimizer=optimizer,
         scheduler=scheduler,
         train_loader=train_loader,
@@ -213,7 +197,7 @@ def main():
         save_path=args.save_folder,
         save_every=args.save_every,
         test_every=args.test_every,
-        loss_fn=torch.nn.CrossEntropyLoss()  # weight=class_weights.to(int(os.environ["LOCAL_RANK"])))
+        loss_fn=torch.nn.CrossEntropyLoss()
     )
     trainer.train()
 
