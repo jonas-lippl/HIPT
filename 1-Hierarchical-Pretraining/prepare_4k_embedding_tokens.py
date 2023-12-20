@@ -65,30 +65,27 @@ def main(args):
     count = 0
 
     transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    wsis = [wsi for wsi in os.listdir("/data/WSI_patches_4096px_2048mu")]
-    # patches = [patch for patch in os.listdir("/data/single_4096_px_2048mu")]
-    # total = len(patches)
-    # print(f"Found {len(patches)} patches.")
-    os.makedirs("/data/single_4096px_2048mu_embeddings", exist_ok=True)
+    patches = [patch for patch in os.listdir("/data/single_4096_px_2048mu_train")]
+    total = len(patches)
+    print(f"Found {total} patches.")
+    os.makedirs("/data/single_4096px_2048mu_embeddings_train", exist_ok=True)
     with torch.no_grad():
-        for wsi in tqdm(wsis[int(len(wsis)*args.start):int(len(wsis)*args.stop)]):
-            label = LABELS_MAP[wsi.split("-")[-1]]
-            for patch in os.listdir("/data/WSI_patches_4096px_2048mu/" + wsi):
-                # if os.path.exists(os.path.join("/data/single_4096px_2048_embeddings", f"{patch}.pt")):
-                #     continue
-                img = torch.load(os.path.join("/data/WSI_patches_4096px_2048mu/" + wsi, patch))
-                batch = torch.zeros((256, 3, 256, 256))
-                for i in range(16):
-                    for j in range(16):
-                        batch[i * 16 + j] = transform(
-                            img[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
-                out = vit256(batch.to(device))
-                out = out.unfold(0, 16, 16).transpose(0, 1)
-                out = vit4k(out.unsqueeze(dim=0)).squeeze(dim=0).cpu()
-                torch.save((out, label), os.path.join("/data/single_4096px_2048mu_embeddings", f"{patch}.pt"))
-                count += 1
-                if count % 100 == 0:
-                    print(f"Saved {count} patch 4k embeddings.")
+        for patch in patches[total * args.start: total * args.stop]:
+            if os.path.exists(os.path.join("/data/single_4096px_2048mu_embeddings_train", f"{patch}.pt")):
+                continue
+            img, label = torch.load(os.path.join("/data/single_4096_px_2048mu_train", patch))
+            batch = torch.zeros((256, 3, 256, 256))
+            for i in range(16):
+                for j in range(16):
+                    batch[i * 16 + j] = transform(
+                        img[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
+            out = vit256(batch.to(device))
+            out = out.unfold(0, 16, 16).transpose(0, 1)
+            out = vit4k(out.unsqueeze(dim=0)).squeeze(dim=0).cpu()
+            torch.save((out, label), os.path.join("/data/single_4096px_2048mu_embeddings_train", f"{patch}.pt"))
+            count += 1
+            if count % 100 == 0:
+                print(f"Saved {count} patch 4k embeddings.")
         print(f"Saved {count} patch embeddings in total.")
 
 

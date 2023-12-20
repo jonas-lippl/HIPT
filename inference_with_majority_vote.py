@@ -14,7 +14,7 @@ from generate_overlays import get_limits_of_plot, add_labels_and_save_plot, prep
 from utils.load_data import load_lymphoma_data_WSI_embeddings
 
 """
-screen -dmS hipt_WSI_patches sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu_4k_embeddings:/data -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu:/original_patches -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/inference_with_majority_vote.py; exec bash'
+screen -dmS hipt_WSI_patches_overlap sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu_4k_embeddings:/data -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu:/original_patches -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/inference_with_majority_vote.py; exec bash'
 screen -dmS hipt_WSI_patches_overlap sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu_0.5overlap_4k_embeddings:/data -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu:/original_patches -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/inference_with_majority_vote.py; exec bash'
 """
 
@@ -133,7 +133,7 @@ def main():
             y = y.to(device).squeeze(dim=0)
             print("X shape: ", X.shape)
             if X.shape[0] == 10:
-                print(f"Skipping WSI {name} with {X.shape[0]} patches")
+                print(f"Skipping WSI {name} with only {X.shape[0]} patches")
                 continue
             prob, pred = classifier.forward(X)
             print("Predictions: ", pred)

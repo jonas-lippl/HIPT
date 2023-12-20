@@ -35,7 +35,7 @@ def get_args_parser():
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     teacher = vits.vit_small(patch_size=16)
-    state_dict = torch.load("/mnt/ckpts/pretrain_40_epochs_64_bs/checkpoint0039.pth", map_location="cpu")['teacher']
+    state_dict = torch.load("/mnt/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth", map_location="cpu")['teacher']
     state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
     state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
     missing_keys, unexpected_keys = teacher.load_state_dict(state_dict, strict=False)
