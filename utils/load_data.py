@@ -38,9 +38,9 @@ class EmbeddingDS(Dataset):
         data = torch.load(self.path + "/" + self.names[idx])
         # Being able to handel int labels and torch tensor labels
         if type(data[1]) is int:
-            return data[0], torch.tensor(data[1])
+            return data[0], torch.tensor(data[1]), self.names[idx]
         # Return name of slide for debugging purposes
-        return data[0], data[1]  # , self.names[idx]
+        return data[0], data[1], self.names[idx]
 
 
 def load_lymphoma_data(batch_size, mode='train'):

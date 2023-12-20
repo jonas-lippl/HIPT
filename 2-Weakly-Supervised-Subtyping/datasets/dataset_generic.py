@@ -40,7 +40,7 @@ class PathDataset(Dataset):
 
     def __getitem__(self, idx):
         data, label = torch.load(self.paths[idx])
-        return data, label
+        return data, label  # , self.paths[idx]
 
 
 

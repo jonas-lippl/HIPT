@@ -1,4 +1,5 @@
 import argparse
+import gc
 import math
 import os
 import time
@@ -16,7 +17,7 @@ from HIPT_4K.hipt_4k import HIPT_4K
 from utils.load_data import load_lymphoma_data_single_patches
 
 """
-screen -dmS hipt_finetune sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096_px_2048mu:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/finetune_pretrained_models.py --batch_size=8 --save_folder=hipt_4k_finetune_full_model; exec bash'
+screen -dmS hipt_finetune sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096_px_2048mu:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/finetune_pretrained_models.py --batch_size=8 --save_folder=hipt_4k_finetune_full_model; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='HIPT finetuning on lymphoma images')
@@ -98,10 +99,11 @@ class Trainer:
         loss.backward()
         self.intermediate_losses.append(loss.item())
         self.optimizer.step()
+        self.optimizer.zero_grad()
 
         # Free up memory
-        del prob, pred, loss
-        torch.cuda.empty_cache()
+        # del prob, pred, loss
+        # torch.cuda.empty_cache()
 
     def _run_validation_batch(self, X: torch.Tensor, y: torch.Tensor):
         with torch.no_grad():
@@ -109,11 +111,10 @@ class Trainer:
             self.validation_corrects += torch.sum(pred == y)
 
         # Free up memory
-        del prob, pred
-        torch.cuda.empty_cache()
+        # del prob, pred
+        # torch.cuda.empty_cache()
 
     def _run_epoch(self, epoch):
-        b_sz = len(next(iter(self.train_loader))[0])
         batch_count = 0
         self.training_corrects, self.validation_corrects = 0, 0
         total_len_train_data, total_len_validation_data = 0, 0
@@ -123,7 +124,7 @@ class Trainer:
         for X, y in self.train_loader:
             total_len_train_data += len(y)
             print(
-                f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {b_sz} | "
+                f"[GPU{self.gpu_id}] Epoch {epoch} | Batchsize: {self.batch_size} | "
                 f"Batch {batch_count * 8 + self.gpu_id}/{len(self.train_loader) * 8}")
             X = X.to(self.gpu_id)
             y = y.to(self.gpu_id)
@@ -150,6 +151,8 @@ class Trainer:
         else:
             self.statistics['val_acc'].append(float('nan'))
 
+        torch.cuda.empty_cache()
+
     def train(self):
         for epoch in range(self.epochs):
             start = time.time()
@@ -160,6 +163,7 @@ class Trainer:
                 print(f"Epoch {epoch} took {round(end - start, 2)} seconds")
             if epoch % self.save_every == 0:
                 self.save_data()
+            gc.collect()
 
     def save_data(self):
         if not os.path.exists(self.save_path):
@@ -197,7 +201,7 @@ def main():
         save_path=args.save_folder,
         save_every=args.save_every,
         test_every=args.test_every,
-        loss_fn=torch.nn.CrossEntropyLoss()
+        loss_fn=torch.nn.CrossEntropyLoss(),
     )
     trainer.train()
 

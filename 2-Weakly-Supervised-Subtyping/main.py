@@ -4,6 +4,7 @@ import argparse
 import pdb
 import os
 import math
+import random
 
 ### Numerical Packages
 import numpy as np
@@ -23,7 +24,7 @@ import torch.nn.functional as F
 
 
 """
-screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=0\" -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
+screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
 """
 
 
@@ -53,6 +54,7 @@ def main(args):
         #                                                                  csv_path='{}/splits_{}.csv'.format(
         #                                                                      args.split_dir, i))
         embeddings = os.listdir(os.path.join(args.data_root_dir, "WSI_patches_4096px_2048mu_4k_embeddings"))
+        random.shuffle(embeddings)
 
         # train_split_file = os.path.join(args.data_root_dir, "train_slides.txt")
         # with open(train_split_file, 'r') as file:
@@ -64,7 +66,6 @@ def main(args):
                        # for embedding in embeddings if embedding.split(".")[0] in lines]
         train_dataset = PathDataset(train_paths)
         print("Train Dataset Size: ", len(train_dataset))
-
         # test_split_file = os.path.join(args.data_root_dir, "test_slides.txt")
         # with open(test_split_file, 'r') as file:
         #     lines = file.readlines()
@@ -75,6 +76,14 @@ def main(args):
                       # for embedding in embeddings if embedding.split(".")[0] in lines]
         test_dataset = PathDataset(test_paths)
         print("Test Dataset Size: ", len(test_dataset))
+        # for data in test_dataset:
+        #     X, y, name = data
+        #     if X.shape[0] == 0:
+        #         print(name)
+        # for data in train_dataset:
+        #     X, y, name = data
+        #     if X.shape[0] == 0:
+        #         print(name)
         datasets = (train_dataset, test_dataset)
         results, test_auc, val_auc, test_acc, val_acc = train(datasets, i, args)
         all_test_auc.append(test_auc)

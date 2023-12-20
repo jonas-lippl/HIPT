@@ -107,8 +107,8 @@ class Trainer:
         self.optimizer.step()
 
         # Free up memory
-        # del feat, out, predicted_labels, loss
-        # torch.cuda.empty_cache()
+        del prob, pred, loss
+        torch.cuda.empty_cache()
 
     def _run_validation_batch(self, X: torch.Tensor, y: torch.Tensor):
         with torch.no_grad():
@@ -117,8 +117,8 @@ class Trainer:
             self.validation_corrects += torch.sum(pred == y)
 
         # Free up memory
-        # del feat, out, predicted_labels
-        # torch.cuda.empty_cache()
+        del prob, pred
+        torch.cuda.empty_cache()
 
     def _run_epoch(self, epoch):
         b_sz = len(next(iter(self.train_loader))[0])

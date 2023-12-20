@@ -334,6 +334,7 @@ def validate(cur, epoch, model, loader, n_classes, early_stopping = None, writer
 
     with torch.no_grad():
         for batch_idx, batch in enumerate(loader):
+
             if hasattr(model, "num_clusters"):
                 data, cluster_id, label = batch
                 data, cluster_id, label = data.to(device, non_blocking=True), cluster_id, label.to(device, non_blocking=True)
@@ -581,6 +582,9 @@ def summary(model, loader, n_classes):
             data, cluster_id, label = data.to(device), cluster_id, label.to(device)
         else:
             data, label = batch
+            if data.shape[1] == 0:
+                print("Empty data")
+                continue
             data, label = data.to(device), label.to(device)
             cluster_id = None
 
@@ -611,6 +615,8 @@ def summary(model, loader, n_classes):
         # print("All probs: ", all_probs)
         for class_idx in range(n_classes):
             if class_idx in all_labels:
+                print("Binary labels: ", binary_labels[:, class_idx])
+                print("All probs: ", all_probs[:, class_idx])
                 fpr, tpr, thresholds = roc_curve(binary_labels[:, class_idx], all_probs[:, class_idx])
                 print(f"Class {class_idx}: \nfpr: {fpr} \ntpr: {tpr} \nauc: {calc_auc(fpr, tpr)} \nusing thresholds: {thresholds}")
                 aucs.append(calc_auc(fpr, tpr))

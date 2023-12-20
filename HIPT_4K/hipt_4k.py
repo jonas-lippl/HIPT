@@ -87,7 +87,7 @@ class HIPT_4K(torch.nn.Module):
         features_cls256 = torch.vstack(features_cls256)  # 3. [B x 384], where 384 == dim of ViT-256 [ClS] token.
         # features_cls256 = features_cls256.reshape(w_256, h_256, 384).transpose(0, 1).transpose(0, 2).unsqueeze(dim=0)
         features_cls256 = features_cls256.reshape(batch_size, w_256, h_256, 384).transpose(1, 2).transpose(1, 3)
-        features_cls256 = features_cls256.to(self.device4k, non_blocking=True)  # 4. [1 x 384 x w_256 x h_256]
+        features_cls256 = features_cls256.to(self.device4k, non_blocking=True)  # 4. [B x 384 x w_256 x h_256]
         features_cls4k = self.model4k.forward(features_cls256)  # 5. [1 x 192], where 192 == dim of ViT-4K [ClS] token.
         output = self.fc(features_cls4k)  # Pass the output through the fully connected layer
         return output
