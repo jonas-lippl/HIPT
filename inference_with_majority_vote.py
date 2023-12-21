@@ -16,6 +16,7 @@ from utils.load_data import load_lymphoma_data_WSI_embeddings
 """
 screen -dmS hipt_WSI_patches_overlap sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu_4k_embeddings:/data -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu:/original_patches -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/inference_with_majority_vote.py; exec bash'
 screen -dmS hipt_WSI_patches_overlap sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu_0.5overlap_4k_embeddings:/data -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu:/original_patches -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/inference_with_majority_vote.py; exec bash'
+screen -dmS hipt_test_slides_only sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/blobyfire/data/WSI_patches_4096px_2048mu:/original_patches -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/inference_with_majority_vote.py; exec bash'
 """
 
 INT2STR_LABEL_MAP = {
@@ -119,7 +120,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     data_loader = load_lymphoma_data_WSI_embeddings()
     classifier = ClassificationHead().to(device)
-    classifier.load_state_dict(torch.load("/mnt/experiments/hipt_4k_extra_data/classifier.pt"))
+    classifier.load_state_dict(torch.load("/mnt/experiments/hipt_4k_train_slides_only/classifier.pt"))
 
     with torch.no_grad():
         correct = 0
@@ -128,12 +129,12 @@ def main():
         per_class_correct = {i: 0 for i in range(1, 7)}
         single_patch_per_wsi_counter = 0
         for i, data in enumerate(data_loader):
-            X, y, name = data
+            X, y = data
             X = X.to(device).squeeze(dim=0)
             y = y.to(device).squeeze(dim=0)
             print("X shape: ", X.shape)
             if X.shape[0] == 10:
-                print(f"Skipping WSI {name} with only {X.shape[0]} patches")
+                print(f"Skipping WSI with {X.shape[0]} patches")
                 continue
             prob, pred = classifier.forward(X)
             print("Predictions: ", pred)

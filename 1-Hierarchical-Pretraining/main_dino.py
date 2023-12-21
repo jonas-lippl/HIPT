@@ -36,8 +36,8 @@ import vision_transformer as vits
 from vision_transformer import DINOHead
 
 """
-screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_100_epochs_64_bs/ --epochs 100; exec bash'
 screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs/ --epochs 40 --batch_size_per_gpu 64; exec bash'
+screen -dmS hipt_resnet_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch resnet50 --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs_resnet/ --epochs 40 --batch_size_per_gpu 64; exec bash'
 """
 
 
@@ -205,8 +205,8 @@ def train_dino(args):
         embed_dim = student.embed_dim
     # otherwise, we check if the architecture is in torchvision models
     elif args.arch in torchvision_models.__dict__.keys():
-        student = torchvision_models.__dict__[args.arch]()
-        teacher = torchvision_models.__dict__[args.arch]()
+        student = torchvision_models.__dict__[args.arch](num_classes=384)
+        teacher = torchvision_models.__dict__[args.arch](num_classes=384)
         embed_dim = student.fc.weight.shape[1]
     else:
         print(f"Unknow architecture: {args.arch}")

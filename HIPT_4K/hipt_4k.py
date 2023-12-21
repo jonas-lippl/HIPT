@@ -42,8 +42,10 @@ class HIPT_4K(torch.nn.Module):
 	"""
 
     def __init__(self,
-                 model256_path: str = 'HIPT_4K/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
-                 model4k_path: str = 'HIPT_4K/ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
+                 # model256_path: str = 'HIPT_4K/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
+                 # model4k_path: str = 'HIPT_4K/ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
+                 model256_path: str = 'HIPT_4K/Checkpoints/vit256_small_dino.pth',
+                 model4k_path: str = 'HIPT_4K/Checkpoints/vit4k_xs_dino.pth',
 
                  device256=torch.device('cuda:0'),
                  device4k=torch.device('cuda:1')):
@@ -54,7 +56,7 @@ class HIPT_4K(torch.nn.Module):
         self.device256 = device256
         self.device4k = device4k
         self.fc = ClassificationHead()
-        self.fc.load_state_dict(torch.load("/mnt/experiments/hipt_4k_35000_patches_2048um/classifier.pt"))
+        # self.fc.load_state_dict(torch.load("/mnt/experiments/hipt_4k_35000_patches_2048um/classifier.pt"))
         self.fc.to(device4k)
 
     def forward(self, x):

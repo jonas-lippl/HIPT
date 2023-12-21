@@ -61,9 +61,15 @@ def main(args):
         #     lines = file.readlines()
         # lines = [line.replace("\n", "") for line in lines]
         # print(f"{len(lines)} train slides found")
+        with open(os.path.join(args.data_root_dir, "train_slides.txt"), 'r') as file:
+            train_files = file.readlines()
+        train_files = [file.replace("\n", "") for file in train_files]
+        with open(os.path.join(args.data_root_dir, "test_slides.txt"), 'r') as file:
+            test_files = file.readlines()
+        test_files = [file.replace("\n", "") for file in test_files]
+
         train_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
-                       for embedding in embeddings[:int(0.8*len(embeddings))]]
-                       # for embedding in embeddings if embedding.split(".")[0] in lines]
+                       for embedding in embeddings if embedding.split(".")[0] in train_files]
         train_dataset = PathDataset(train_paths)
         print("Train Dataset Size: ", len(train_dataset))
         # test_split_file = os.path.join(args.data_root_dir, "test_slides.txt")
@@ -72,8 +78,7 @@ def main(args):
         # lines = [line.replace("\n", "") for line in lines]
         # print(f"{len(lines)} train slides found")
         test_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
-                      for embedding in embeddings[int(0.8*len(embeddings)):]]
-                      # for embedding in embeddings if embedding.split(".")[0] in lines]
+                      for embedding in embeddings if embedding.split(".")[0] in test_files]
         test_dataset = PathDataset(test_paths)
         print("Test Dataset Size: ", len(test_dataset))
         # for data in test_dataset:

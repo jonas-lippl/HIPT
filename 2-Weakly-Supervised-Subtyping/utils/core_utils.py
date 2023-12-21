@@ -617,6 +617,10 @@ def summary(model, loader, n_classes):
             if class_idx in all_labels:
                 print("Binary labels: ", binary_labels[:, class_idx])
                 print("All probs: ", all_probs[:, class_idx])
+                plt.scatter(all_probs[:, class_idx], binary_labels[:, class_idx])
+                plt.title(f'Probabilities for {class_idx}={INT2STR_LABEL_MAP[class_idx]}')
+                plt.savefig(f'results/probs_{class_idx}={INT2STR_LABEL_MAP[class_idx]}.png')
+                plt.clf()
                 fpr, tpr, thresholds = roc_curve(binary_labels[:, class_idx], all_probs[:, class_idx])
                 print(f"Class {class_idx}: \nfpr: {fpr} \ntpr: {tpr} \nauc: {calc_auc(fpr, tpr)} \nusing thresholds: {thresholds}")
                 aucs.append(calc_auc(fpr, tpr))

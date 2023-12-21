@@ -65,27 +65,41 @@ def main(args):
     count = 0
 
     transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    patches = [patch for patch in os.listdir("/data/single_4096_px_2048mu_train")]
-    total = len(patches)
-    print(f"Found {total} patches.")
+    with open("/data/train_slides.txt", "r") as f:
+        train_slides = f.readlines()
+    train_slides = [slide.replace("\n", "") for slide in train_slides]
+    wsis = [wsi for wsi in os.listdir("/data/WSI_patches_4096px_2048mu") if wsi in train_slides]
+    # patches = [patch for patch in os.listdir("/data/single_4096px_2048mu_train")]
+    # total = len(patches)
+    total = len(wsis)
+    # print(f"Found {total} patches.")
+    print(f"Found {total} WSIs.")
     os.makedirs("/data/single_4096px_2048mu_embeddings_train", exist_ok=True)
     with torch.no_grad():
-        for patch in patches[total * args.start: total * args.stop]:
-            if os.path.exists(os.path.join("/data/single_4096px_2048mu_embeddings_train", f"{patch}.pt")):
+        for wsi in wsis[int(total * args.start): int(total * args.stop)]:
+            label = LABELS_MAP[wsi.split("-")[-1]]
+            patches = os.listdir(os.path.join("/data/WSI_patches_4096px_2048mu", wsi))
+            if len(patches) == 0:
+                print(f"Skipping {wsi} because it has no patches.")
                 continue
-            img, label = torch.load(os.path.join("/data/single_4096_px_2048mu_train", patch))
-            batch = torch.zeros((256, 3, 256, 256))
-            for i in range(16):
-                for j in range(16):
-                    batch[i * 16 + j] = transform(
-                        img[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
-            out = vit256(batch.to(device))
-            out = out.unfold(0, 16, 16).transpose(0, 1)
-            out = vit4k(out.unsqueeze(dim=0)).squeeze(dim=0).cpu()
-            torch.save((out, label), os.path.join("/data/single_4096px_2048mu_embeddings_train", f"{patch}.pt"))
-            count += 1
-            if count % 100 == 0:
-                print(f"Saved {count} patch 4k embeddings.")
+            for patch in patches:
+            # for patch in patches[int(total * args.start): int(total * args.stop)]:
+                if os.path.exists(os.path.join("/data/single_4096px_2048mu_embeddings_train", patch)):
+                    continue
+                # img, label = torch.load(os.path.join("/data/WSI_patches_4096px_2048mu/"+wsi, patch))
+                img = torch.load(os.path.join("/data/WSI_patches_4096px_2048mu/"+wsi, patch))
+                batch = torch.zeros((256, 3, 256, 256))
+                for i in range(16):
+                    for j in range(16):
+                        batch[i * 16 + j] = transform(
+                            img[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
+                out = vit256(batch.to(device))
+                out = out.unfold(0, 16, 16).transpose(0, 1)
+                out = vit4k(out.unsqueeze(dim=0)).squeeze(dim=0).cpu()
+                torch.save((out, torch.tensor(label)), os.path.join("/data/single_4096px_2048mu_embeddings_train", patch))
+                count += 1
+                if count % 100 == 0:
+                    print(f"Saved {count} patch 4k embeddings.")
         print(f"Saved {count} patch embeddings in total.")
 
 
