@@ -45,16 +45,20 @@ def main(args):
     count = 0
 
     transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
+    # embedding_dir = "/data/single_4096px_2048mu_embeddings_their_model_test"
+    # patch_dir = "/data/single_4096px_2048mu_test"
+    embedding_dir = "/data/single_4096px_2048mu_embeddings_their_model_train"
+    patch_dir = "/data/single_4096px_2048mu_train"
 
-    patches = [patch for patch in os.listdir("/data/single_4096_px_2048mu")]
+    patches = [patch for patch in os.listdir(patch_dir)]
     total = len(patches)
     print(f"Found {len(patches)} patches.")
-    os.makedirs("/data/single_4096px_2048mu_embeddings", exist_ok=True)
+    os.makedirs(embedding_dir, exist_ok=True)
     with torch.no_grad():
         for patch in tqdm(patches[int(total*args.start):int(total*args.stop)]):
-            img, label = torch.load(os.path.join("/data/single_4096_px_2048mu", patch))
+            img, label = torch.load(os.path.join(patch_dir, patch))
             out = model(transform(img.clone().div(255.0)).unsqueeze(dim=0)).squeeze(dim=0).cpu()
-            torch.save((out, label), os.path.join("/data/single_4096px_2048mu_embeddings", f"{patch}.pt"))
+            torch.save((out, label), os.path.join(embedding_dir, f"{patch}.pt"))
             count += 1
             if count % 100 == 0:
                 print(f"Saved {count} patch 4k embeddings.")

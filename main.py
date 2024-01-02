@@ -21,6 +21,7 @@ from utils.load_data import load_lymphoma_data, load_lymphoma_data_single_patche
 """
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096px_2048mu_embeddings:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_4k_extra_data; exec bash'
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096px_2048mu_embeddings_train:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_4k_train_slides_only; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_their_pretrained_model --test_every=1; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='HIPT training for lymphoma images')
@@ -77,8 +78,6 @@ class Trainer:
     def __init__(self, classifier, optimizer, scheduler, train_loader, val_loader, epochs, lr, batch_size, save_path,
                  save_every, test_every, loss_fn):
         self.gpu_id = int(os.environ["LOCAL_RANK"])
-        # self.feature_extractor = feature_extractor
-        # self.feature_extractor = DDP(feature_extractor, device_ids=[self.gpu_id])
         self.classifier = DDP(classifier, device_ids=[self.gpu_id])
         self.optimizer = optimizer
         self.scheduler = scheduler
@@ -91,16 +90,14 @@ class Trainer:
         self.test_every = test_every
         self.save_path = f"experiments/{save_path}"
         self.intermediate_losses = []
-        self.statistics = {'epoch': [], 'train_loss': [], 'train_acc': []}
-        # self.statistics = {'epoch': [], 'train_loss': [], 'train_acc': [], 'val_acc': []}
+        # self.statistics = {'epoch': [], 'train_loss': [], 'train_acc': []}
+        self.statistics = {'epoch': [], 'train_loss': [], 'train_acc': [], 'val_acc': []}
         self.training_corrects = 0
         self.validation_corrects = 0
         self.loss_fn = loss_fn
 
     def _run_batch(self, X: torch.Tensor, y: torch.Tensor):
         self.optimizer.zero_grad()
-        # with torch.no_grad():
-        #     feat = self.feature_extractor.forward(X)
         prob, pred = self.classifier.forward(X)
         self.training_corrects += torch.sum(pred == y)
         loss = self.loss_fn(prob, y)
@@ -114,7 +111,6 @@ class Trainer:
 
     def _run_validation_batch(self, X: torch.Tensor, y: torch.Tensor):
         with torch.no_grad():
-            # feat = self.feature_extractor.forward(X)
             prob, pred = self.classifier.forward(X)
             self.validation_corrects += torch.sum(pred == y)
 
@@ -145,20 +141,20 @@ class Trainer:
         print(f"[GPU{self.gpu_id}] Training accuracy: {train_acc}")
         self.statistics['train_acc'].append(train_acc)
 
-        # self.classifier.eval()
-        # if epoch % self.test_every == 0:
-        #     self.val_loader.sampler.set_epoch(epoch)
-        #     with torch.no_grad():
-        #         for X, y in self.val_loader:
-        #             total_len_validation_data += len(y)
-        #             X = X.to(self.gpu_id)
-        #             y = y.to(self.gpu_id)
-        #             self._run_validation_batch(X, y)
-        #     val_acc = round(float(self.validation_corrects) / total_len_validation_data, 4)
-        #     print(f"[GPU{self.gpu_id}] Validation accuracy: {val_acc}")
-        #     self.statistics['val_acc'].append(val_acc)
-        # else:
-        #     self.statistics['val_acc'].append(float('nan'))
+        self.classifier.eval()
+        if epoch % self.test_every == 0:
+            self.val_loader.sampler.set_epoch(epoch)
+            with torch.no_grad():
+                for X, y in self.val_loader:
+                    total_len_validation_data += len(y)
+                    X = X.to(self.gpu_id)
+                    y = y.to(self.gpu_id)
+                    self._run_validation_batch(X, y)
+            val_acc = round(float(self.validation_corrects) / total_len_validation_data, 4)
+            print(f"[GPU{self.gpu_id}] Validation accuracy: {val_acc}")
+            self.statistics['val_acc'].append(val_acc)
+        else:
+            self.statistics['val_acc'].append(float('nan'))
 
     def train(self):
         for epoch in range(self.epochs):
@@ -183,13 +179,9 @@ def main():
     args = parser.parse_args()
     general_setup()
     ddp_setup()
-    # train_loader = load_lymphoma_data(args.batch_size, mode='train')
-    # test_loader = load_lymphoma_data(args.batch_size, mode='test')
-    # train_loader = load_lymphoma_data_single_patches(args.batch_size, mode='train')
-    # test_loader = load_lymphoma_data_single_patches(args.batch_size, mode='test')
+
     train_loader = load_lymphoma_data_single_patch_embeddings(args.batch_size, mode='train')
-    # test_loader = load_lymphoma_data_single_patch_embeddings(args.batch_size, mode='test')
-    # feature_extractor = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]))
+    test_loader = load_lymphoma_data_single_patch_embeddings(args.batch_size, mode='test')
     classifier = ClassificationHead().to(int(os.environ["LOCAL_RANK"]))
     optimizer = torch.optim.Adam(classifier.parameters(), lr=args.lr, weight_decay=0.05)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
@@ -208,8 +200,8 @@ def main():
         optimizer=optimizer,
         scheduler=scheduler,
         train_loader=train_loader,
-        val_loader=None,
-        # val_loader=test_loader
+        # val_loader=None,
+        val_loader=test_loader,
         epochs=args.epochs,
         lr=args.lr,
         batch_size=args.batch_size,

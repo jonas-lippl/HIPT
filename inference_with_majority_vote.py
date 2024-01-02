@@ -120,7 +120,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     data_loader = load_lymphoma_data_WSI_embeddings()
     classifier = ClassificationHead().to(device)
-    classifier.load_state_dict(torch.load("/mnt/experiments/hipt_4k_train_slides_only/classifier.pt"))
+    classifier.load_state_dict(torch.load("/mnt/experiments/hipt_their_pretrained_model/classifier.pt"))
 
     with torch.no_grad():
         correct = 0

@@ -61,21 +61,6 @@ def load_lymphoma_data(batch_size, mode='train'):
 
 # NOTE: This took 162.23 seconds per epoch for 3000 patches
 def load_lymphoma_data_single_patches(batch_size, mode='train'):
-    path_to_data = f"/data"
-    patches = [file for file in os.listdir(path_to_data)]
-    train_patches = patches[:int(0.8 * len(patches))]
-    val_patches = patches[int(0.8 * len(patches)):]
-    print(f"Total number of training samples: {len(train_patches)}")
-    transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    dataset = CustomFolderDs(path_to_data, train_patches,
-                             transform=transform) if mode == 'train' else CustomFolderDs(path_to_data,
-                                                                                         val_patches,
-                                                                                         transform=transform)
-    return DataLoader(dataset, sampler=DistributedSampler(dataset), batch_size=batch_size, drop_last=False,
-                      num_workers=4)
-
-
-def load_lymphoma_data_single_patch_embeddings(batch_size, mode='train'):
     if mode == 'train':
         path_to_data = f"/data/single_4096px_2048mu_train"
     else:
@@ -83,20 +68,28 @@ def load_lymphoma_data_single_patch_embeddings(batch_size, mode='train'):
     patches = [file for file in os.listdir(path_to_data)]
     print(f"Total number of samples: {len(patches)}")
     random.shuffle(patches)
-    # train_patches = patches[:int(0.8 * len(patches))]
-    # val_patches = patches[int(0.8 * len(patches)):]
-    # if mode == 'train':
-    #     print(f"Total number of training samples: {len(train_patches)}")
-    # else:
-    #     print(f"Total number of test samples: {len(val_patches)}")
+    transform = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    dataset = CustomFolderDs(path_to_data, patches, transform=transform)
+    return DataLoader(dataset, sampler=DistributedSampler(dataset), batch_size=batch_size, drop_last=False,
+                      num_workers=4)
+
+
+def load_lymphoma_data_single_patch_embeddings(batch_size, mode='train'):
+    if mode == 'train':
+        path_to_data = f"/data/single_4096px_2048mu_embeddings_their_model_train"
+    else:
+        path_to_data = f"/data/single_4096px_2048mu_embeddings_their_model_test"
+    patches = [file for file in os.listdir(path_to_data)]
+    print(f"Total number of samples: {len(patches)}")
+    random.shuffle(patches)
     dataset = EmbeddingDS(path_to_data, patches)
-    # dataset = EmbeddingDS(path_to_data, train_patches) if mode == 'train' else EmbeddingDS(path_to_data, val_patches)
     return DataLoader(dataset, sampler=DistributedSampler(dataset), batch_size=batch_size, drop_last=False,
                       num_workers=4)
 
 
 def load_lymphoma_data_WSI_embeddings():
-    path_to_data = f"/data/WSI_patches_4096px_2048mu_4k_embeddings"
+    # path_to_data = f"/data/WSI_patches_4096px_2048mu_4k_embeddings"
+    path_to_data = f"/data/WSI_patches_4096px_2048mu_4k_embeddings_their_pretrained_model"
     with open("/data/test_slides.txt", "r") as f:
         test_slides = f.readlines()
     test_slides = [slide.replace("\n", "") for slide in test_slides]

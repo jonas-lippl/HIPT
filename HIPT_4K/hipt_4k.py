@@ -56,7 +56,7 @@ class HIPT_4K(torch.nn.Module):
         self.device256 = device256
         self.device4k = device4k
         self.fc = ClassificationHead()
-        # self.fc.load_state_dict(torch.load("/mnt/experiments/hipt_4k_35000_patches_2048um/classifier.pt"))
+        self.fc.load_state_dict(torch.load("/mnt/experiments/hipt_their_pretrained_model/classifier.pt"))
         self.fc.to(device4k)
 
     def forward(self, x):
