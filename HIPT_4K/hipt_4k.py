@@ -42,22 +42,22 @@ class HIPT_4K(torch.nn.Module):
 	"""
 
     def __init__(self,
-                 # model256_path: str = 'HIPT_4K/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
-                 # model4k_path: str = 'HIPT_4K/ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
-                 model256_path: str = 'HIPT_4K/Checkpoints/vit256_small_dino.pth',
-                 model4k_path: str = 'HIPT_4K/Checkpoints/vit4k_xs_dino.pth',
+                 model256_path: str = 'HIPT_4K/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
+                 model4k_path: str = 'HIPT_4K/ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
+                 # model256_path: str = 'HIPT_4K/Checkpoints/vit256_small_dino.pth',
+                 # model4k_path: str = 'HIPT_4K/Checkpoints/vit4k_xs_dino.pth',
 
                  device256=torch.device('cuda:0'),
                  device4k=torch.device('cuda:1')):
 
         super().__init__()
-        self.model256 = get_vit256(pretrained_weights=model256_path).to(device256)
-        self.model4k = get_vit4k(pretrained_weights=model4k_path).to(device4k)
+        self.model256 = get_vit256(pretrained_weights=model256_path, requires_grad=True).to(device256)
+        self.model4k = get_vit4k(pretrained_weights=model4k_path, requires_grad=True).to(device4k)
         self.device256 = device256
         self.device4k = device4k
-        self.fc = ClassificationHead()
-        self.fc.load_state_dict(torch.load("/mnt/experiments/hipt_their_pretrained_model/classifier.pt"))
-        self.fc.to(device4k)
+        # self.fc = ClassificationHead()
+        # self.fc.load_state_dict(torch.load("/mnt/experiments/hipt_their_pretrained_model/classifier.pt"))
+        # self.fc.to(device4k)
 
     def forward(self, x):
         """
@@ -91,9 +91,9 @@ class HIPT_4K(torch.nn.Module):
         features_cls256 = features_cls256.reshape(batch_size, w_256, h_256, 384).transpose(1, 2).transpose(1, 3)
         features_cls256 = features_cls256.to(self.device4k, non_blocking=True)  # 4. [B x 384 x w_256 x h_256]
         features_cls4k = self.model4k.forward(features_cls256)  # 5. [1 x 192], where 192 == dim of ViT-4K [ClS] token.
-        output = self.fc(features_cls4k)  # Pass the output through the fully connected layer
-        return output
-        # return features_cls4k
+        # output = self.fc(features_cls4k)  # Pass the output through the fully connected layer
+        # return output
+        return features_cls4k
 
     def forward_asset_dict(self, x: torch.Tensor):
         """

@@ -19,7 +19,7 @@ import HIPT_4K.vision_transformer as vits
 import HIPT_4K.vision_transformer4k as vits4k
 
 
-def get_vit256(pretrained_weights, arch='vit_small', device=torch.device('cuda:0')):
+def get_vit256(pretrained_weights, arch='vit_small', device=torch.device('cuda:0'), requires_grad=False):
     r"""
     Builds ViT-256 Model.
     
@@ -36,7 +36,7 @@ def get_vit256(pretrained_weights, arch='vit_small', device=torch.device('cuda:0
     device = torch.device("cpu")
     model256 = vits.__dict__[arch](patch_size=16, num_classes=0)
     for p in model256.parameters():
-        p.requires_grad = False
+        p.requires_grad = requires_grad
     model256.eval()
     model256.to(device)
 
@@ -55,7 +55,7 @@ def get_vit256(pretrained_weights, arch='vit_small', device=torch.device('cuda:0
     return model256
 
 
-def get_vit4k(pretrained_weights, arch='vit4k_xs', device=torch.device('cuda:1')):
+def get_vit4k(pretrained_weights, arch='vit4k_xs', device=torch.device('cuda:1'), requires_grad=False):
     r"""
     Builds ViT-4K Model.
     
@@ -72,7 +72,7 @@ def get_vit4k(pretrained_weights, arch='vit4k_xs', device=torch.device('cuda:1')
     device = torch.device("cpu")
     model4k = vits4k.__dict__[arch](num_classes=0)
     for p in model4k.parameters():
-        p.requires_grad = False
+        p.requires_grad = requires_grad
     model4k.eval()
     model4k.to(device)
 
