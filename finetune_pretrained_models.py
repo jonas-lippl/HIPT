@@ -75,7 +75,7 @@ class Trainer:
     def __init__(self, model, optimizer, scheduler, train_loader, val_loader, epochs, lr, batch_size, save_path,
                  save_every, test_every, loss_fn):
         self.gpu_id = int(os.environ["LOCAL_RANK"])
-        self.model = DDP(model, device_ids=[self.gpu_id])
+        self.model = DDP(model, device_ids=[self.gpu_id], find_unused_parameters=True)
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.train_loader = train_loader
@@ -87,7 +87,7 @@ class Trainer:
         self.test_every = test_every
         self.save_path = f"experiments/{save_path}"
         self.intermediate_losses = []
-        self.statistics = {'epoch': [], 'train_loss': [], 'train_acc': [], 'val_acc': []}
+        self.statistics = {'epoch': [], 'train_loss': [], 'train_acc': []}  # , 'val_acc': []}
         self.training_corrects = 0
         self.validation_corrects = 0
         self.loss_fn = loss_fn
@@ -95,9 +95,10 @@ class Trainer:
     def _run_batch(self, X: torch.Tensor, y: torch.Tensor):
         self.optimizer.zero_grad()
         out = self.model.forward(X)
+        # out = out.unsqueeze(1)  # Add dimension for contrastive loss
         # prob, pred = self.model.forward(X)
         # self.training_corrects += torch.sum(pred == y)
-        loss = self.loss_fn(out, y)
+        loss = self.loss_fn(out.unsqueeze(1), y)
         loss.backward()
         self.intermediate_losses.append(loss.item())
         self.optimizer.step()
@@ -138,20 +139,20 @@ class Trainer:
         print(f"[GPU{self.gpu_id}] Training accuracy: {train_acc}")
         self.statistics['train_acc'].append(train_acc)
 
-        self.model.eval()
-        if epoch % self.test_every == 0:
-            self.val_loader.sampler.set_epoch(epoch)
-            with torch.no_grad():
-                for X, y in self.val_loader:
-                    total_len_validation_data += len(y)
-                    X = X.to(self.gpu_id)
-                    y = y.to(self.gpu_id)
-                    self._run_validation_batch(X, y)
-            val_acc = round(float(self.validation_corrects) / total_len_validation_data, 4)
-            print(f"[GPU{self.gpu_id}] Validation accuracy: {val_acc}")
-            self.statistics['val_acc'].append(val_acc)
-        else:
-            self.statistics['val_acc'].append(float('nan'))
+        # self.model.eval()
+        # if epoch % self.test_every == 0:
+        #     self.val_loader.sampler.set_epoch(epoch)
+        #     with torch.no_grad():
+        #         for X, y in self.val_loader:
+        #             total_len_validation_data += len(y)
+        #             X = X.to(self.gpu_id)
+        #             y = y.to(self.gpu_id)
+        #             self._run_validation_batch(X, y)
+        #     val_acc = round(float(self.validation_corrects) / total_len_validation_data, 4)
+        #     print(f"[GPU{self.gpu_id}] Validation accuracy: {val_acc}")
+        #     self.statistics['val_acc'].append(val_acc)
+        # else:
+        #     self.statistics['val_acc'].append(float('nan'))
 
         torch.cuda.empty_cache()
 
