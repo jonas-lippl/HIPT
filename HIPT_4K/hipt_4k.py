@@ -41,18 +41,19 @@ class HIPT_4K(torch.nn.Module):
 	[256 x 256] patch tokens encoded via ViT-256 using [16 x 16] patch tokens.
 	"""
 
-    def __init__(self,
-                 model256_path: str = 'HIPT_4K/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
-                 model4k_path: str = 'HIPT_4K/ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
-                 # model256_path: str = 'HIPT_4K/Checkpoints/vit256_small_dino.pth',
-                 # model4k_path: str = 'HIPT_4K/Checkpoints/vit4k_xs_dino.pth',
-
-                 device256=torch.device('cuda:0'),
-                 device4k=torch.device('cuda:1')):
+    def __init__(
+            self,
+            # Standard DINO pretrained models:
+            model256_path: str = 'HIPT_4K/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth',
+            model4k_path: str = 'HIPT_4K/ckpts/pretrain4k_100_epochs_64_bs/checkpoint.pth',
+            # Their pretrained models:
+            # model256_path: str = 'HIPT_4K/Checkpoints/vit256_small_dino.pth',
+            # model4k_path: str = 'HIPT_4K/Checkpoints/vit4k_xs_dino.pth',
+            device256=torch.device('cuda:0'), device4k=torch.device('cuda:1'), requires_grad=False):
 
         super().__init__()
-        self.model256 = get_vit256(pretrained_weights=model256_path, requires_grad=True).to(device256)
-        self.model4k = get_vit4k(pretrained_weights=model4k_path, requires_grad=True).to(device4k)
+        self.model256 = get_vit256(pretrained_weights=model256_path, requires_grad=requires_grad).to(device256)
+        self.model4k = get_vit4k(pretrained_weights=model4k_path, requires_grad=requires_grad).to(device4k)
         self.device256 = device256
         self.device4k = device4k
         # self.fc = ClassificationHead()

@@ -21,7 +21,6 @@ screen -dmS generate_patch_embeddings_6 sh -c 'docker run --gpus \"device=6\" -i
 screen -dmS generate_patch_embeddings_7 sh -c 'docker run --gpus \"device=7\" -it -u `id -u $USER` --rm -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt python3 /mnt/prepare_4k_embedding_tokens.py --start 0.875 --stop 1.0; exec bash'
 """
 
-
 LABELS_MAP = {
     "Unknown": int(Diagnosis("Unknown")),  # for unknown diagnosis
     "HL": int(Diagnosis("HL")),  # Hodgkin Lymphoma
@@ -38,68 +37,87 @@ def get_args_parser():
     parser = argparse.ArgumentParser('DINO', add_help=False)
     parser.add_argument('--start', default=0.0, type=float, help='Patch resolution of the model.')
     parser.add_argument('--stop', default=1.0, type=float, help='Patch resolution of the model.')
+    parser.add_argument('--model_type', default='vit', type=str)
 
     return parser
 
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    vit256 = vits.vit_small(patch_size=16)
-    state_dict = torch.load("/mnt/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth", map_location="cpu")['teacher']
+    if args.model_type == 'resnet':
+        model256 = torchvision_models.__dict__['resnet50'](num_classes=384)
+        state_dict = torch.load("/mnt/ckpts/pretrain_40_epochs_64_bs_resnet/checkpoint.pth", map_location="cpu")[
+            'teacher']
+    else:
+        model256 = vits.vit_small(patch_size=16)
+        state_dict = torch.load("/mnt/ckpts/pretrain_40_epochs_64_bs/checkpoint.pth", map_location="cpu")['teacher']
     state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
     state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-    missing_keys, unexpected_keys = vit256.load_state_dict(state_dict, strict=False)
+    missing_keys, unexpected_keys = model256.load_state_dict(state_dict, strict=False)
 
-    vit256.eval()
-    vit256.to(device)
+    model256.eval()
+    model256.to(device)
 
-    vit4k = vits4k.vit4k_xs(patch_size=16)
-    state_dict = torch.load("/mnt/ckpts/pretrain4k_100_epochs_64_bs_additional_data/checkpoint.pth", map_location="cpu")['teacher']
+    model4k = vits4k.vit4k_xs(patch_size=16)
+    if args.model_type == 'resnet':
+        state_dict = \
+            torch.load("/mnt/ckpts/pretrain4k_100_epochs_64_bs_resnet_features/checkpoint.pth", map_location="cpu")[
+                'teacher']
+    else:
+        state_dict = \
+            torch.load("/mnt/ckpts/pretrain4k_100_epochs_64_bs_additional_data/checkpoint.pth", map_location="cpu")[
+                'teacher']
     state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
     state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
-    missing_keys, unexpected_keys = vit4k.load_state_dict(state_dict, strict=False)
+    missing_keys, unexpected_keys = model4k.load_state_dict(state_dict, strict=False)
 
-    vit4k.eval()
-    vit4k.to(device)
+    model4k.eval()
+    model4k.to(device)
 
     count = 0
 
     transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
-    with open("/data/train_slides.txt", "r") as f:
-        train_slides = f.readlines()
-    train_slides = [slide.replace("\n", "") for slide in train_slides]
-    wsis = [wsi for wsi in os.listdir("/data/WSI_patches_4096px_2048mu") if wsi in train_slides]
-    # patches = [patch for patch in os.listdir("/data/single_4096px_2048mu_train")]
-    # total = len(patches)
-    total = len(wsis)
-    # print(f"Found {total} patches.")
-    print(f"Found {total} WSIs.")
-    os.makedirs("/data/single_4096px_2048mu_embeddings_train", exist_ok=True)
+    # with open("/data/train_slides.txt", "r") as f:
+    #     train_slides = f.readlines()
+    # train_slides = [slide.replace("\n", "") for slide in train_slides]
+    # wsis = [wsi for wsi in os.listdir("/data/WSI_patches_4096px_2048mu") if wsi in train_slides]
+    patch_dir = "/data/single_4096px_2048mu_test"
+    # patch_dir = "/data/single_4096px_2048mu_train"
+    patches = os.listdir(patch_dir)
+    total = len(patches)
+    # total = len(wsis)
+    print(f"Found {total} patches.")
+    # print(f"Found {total} WSIs.")
+    save_dir = "/data/single_4096px_2048mu_embeddings_resnet_test"
+    # save_dir = "/data/single_4096px_2048mu_embeddings_resnet_train"
+    os.makedirs(save_dir, exist_ok=True)
     with torch.no_grad():
-        for wsi in wsis[int(total * args.start): int(total * args.stop)]:
-            label = LABELS_MAP[wsi.split("-")[-1]]
-            patches = os.listdir(os.path.join("/data/WSI_patches_4096px_2048mu", wsi))
-            if len(patches) == 0:
-                print(f"Skipping {wsi} because it has no patches.")
+        # for wsi in tqdm(wsis[int(total * args.start): int(total * args.stop)]):
+        #     label = LABELS_MAP[wsi.split("-")[-1]]
+        #     patches = os.listdir(os.path.join("/data/WSI_patches_4096px_2048mu", wsi))
+        #     if len(patches) == 0:
+        #         print(f"Skipping {wsi} because it has no patches.")
+        #         continue
+        #     for patch in patches:
+        for patch in tqdm(patches[int(total * args.start): int(total * args.stop)]):
+            if os.path.exists(os.path.join(save_dir, patch)):
                 continue
-            for patch in patches:
-            # for patch in patches[int(total * args.start): int(total * args.stop)]:
-                if os.path.exists(os.path.join("/data/single_4096px_2048mu_embeddings_train", patch)):
-                    continue
-                # img, label = torch.load(os.path.join("/data/WSI_patches_4096px_2048mu/"+wsi, patch))
-                img = torch.load(os.path.join("/data/WSI_patches_4096px_2048mu/"+wsi, patch))
-                batch = torch.zeros((256, 3, 256, 256))
-                for i in range(16):
-                    for j in range(16):
-                        batch[i * 16 + j] = transform(
-                            img[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
-                out = vit256(batch.to(device))
-                out = out.unfold(0, 16, 16).transpose(0, 1)
-                out = vit4k(out.unsqueeze(dim=0)).squeeze(dim=0).cpu()
-                torch.save((out, torch.tensor(label)), os.path.join("/data/single_4096px_2048mu_embeddings_train", patch))
-                count += 1
-                if count % 100 == 0:
-                    print(f"Saved {count} patch 4k embeddings.")
+            img, label = torch.load(os.path.join(patch_dir, patch))
+            # img = torch.load(os.path.join("/data/WSI_patches_4096px_2048mu/"+wsi, patch))
+            batch = torch.zeros((256, 3, 256, 256))
+            for i in range(16):
+                for j in range(16):
+                    batch[i * 16 + j] = transform(
+                        img[:, i * 256: (i + 1) * 256, j * 256:(j + 1) * 256].clone().div(255.0))
+            out = model256(batch.to(device))
+            out = out.unfold(0, 16, 16).transpose(0, 1)
+            out = model4k(out.unsqueeze(dim=0)).squeeze(dim=0).cpu()
+            if not type(label) is torch.Tensor:
+                label = torch.tensor(label)
+            torch.save((out, label), os.path.join(save_dir, patch))
+            count += 1
+            if count % 100 == 0:
+                print(f"Saved {count} patch 4k embeddings.")
         print(f"Saved {count} patch embeddings in total.")
 
 

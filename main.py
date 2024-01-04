@@ -22,6 +22,8 @@ from utils.load_data import load_lymphoma_data, load_lymphoma_data_single_patche
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096px_2048mu_embeddings:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_4k_extra_data; exec bash'
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_4096px_2048mu_embeddings_train:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_4k_train_slides_only; exec bash'
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_their_pretrained_model --test_every=1; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_resnet_feature_extractor --test_every=1; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_supcon_loss_finetuned --test_every=1; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='HIPT training for lymphoma images')
@@ -99,6 +101,9 @@ class Trainer:
     def _run_batch(self, X: torch.Tensor, y: torch.Tensor):
         self.optimizer.zero_grad()
         prob, pred = self.classifier.forward(X)
+        if self.gpu_id == 0:
+            print(f"X :{X[0]}")
+            print(f"X shape: {X.shape}")
         self.training_corrects += torch.sum(pred == y)
         loss = self.loss_fn(prob, y)
         loss.backward()

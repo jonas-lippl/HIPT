@@ -40,15 +40,25 @@ def get_args_parser():
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = HIPT_4K(device256=device, device4k=device)
+    model = HIPT_4K(device256=device, device4k=device, requires_grad=False)
+    state_dict = torch.load("/mnt/experiments/hipt_4k_finetune_with_supcon_loss/model.pt", map_location="cpu")
+    state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+    state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict)
+    print(f"Missing keys: {missing_keys}")
+    print(f"Unexpected keys: {unexpected_keys}")
 
     count = 0
 
     transform = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
     # embedding_dir = "/data/single_4096px_2048mu_embeddings_their_model_test"
     # patch_dir = "/data/single_4096px_2048mu_test"
-    embedding_dir = "/data/single_4096px_2048mu_embeddings_their_model_train"
-    patch_dir = "/data/single_4096px_2048mu_train"
+    # embedding_dir = "/data/single_4096px_2048mu_embeddings_their_model_train"
+    # patch_dir = "/data/single_4096px_2048mu_train"
+    # embedding_dir = "/data/single_4096px_2048mu_embeddings_supcon_finetune_train"
+    # patch_dir = "/data/single_4096px_2048mu_train"
+    embedding_dir = "/data/single_4096px_2048mu_embeddings_supcon_finetune_test"
+    patch_dir = "/data/single_4096px_2048mu_test"
 
     patches = [patch for patch in os.listdir(patch_dir)]
     total = len(patches)

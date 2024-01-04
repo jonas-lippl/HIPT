@@ -76,9 +76,13 @@ def load_lymphoma_data_single_patches(batch_size, mode='train'):
 
 def load_lymphoma_data_single_patch_embeddings(batch_size, mode='train'):
     if mode == 'train':
-        path_to_data = f"/data/single_4096px_2048mu_embeddings_their_model_train"
+        # path_to_data = f"/data/single_4096px_2048mu_embeddings_their_model_train"
+        path_to_data = f"/data/single_4096px_2048mu_embeddings_supcon_finetune_train"
+        # path_to_data = f"/data/single_4096px_2048mu_embeddings_resnet_train"
     else:
-        path_to_data = f"/data/single_4096px_2048mu_embeddings_their_model_test"
+        # path_to_data = f"/data/single_4096px_2048mu_embeddings_their_model_test"
+        path_to_data = f"/data/single_4096px_2048mu_embeddings_supcon_finetune_test"
+        # path_to_data = f"/data/single_4096px_2048mu_embeddings_resnet_test"
     patches = [file for file in os.listdir(path_to_data)]
     print(f"Total number of samples: {len(patches)}")
     random.shuffle(patches)

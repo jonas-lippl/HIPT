@@ -28,7 +28,7 @@ parser.add_argument('--batch_size', type=int, default=1, metavar='N', help='batc
 parser.add_argument('--save_folder', type=str, default='hipt_4k_finetune_with_supcon_loss',
                     metavar='N', help='save folder')
 parser.add_argument('--warmup_epochs', type=int, default=10, metavar='N', help='warmup epochs')
-parser.add_argument('--save_every', type=int, default=5, metavar='N', help='save every x epochs')
+parser.add_argument('--save_every', type=int, default=10, metavar='N', help='save every x epochs')
 parser.add_argument('--test_every', type=int, default=50, metavar='N', help='test every x epochs')
 
 
@@ -71,6 +71,14 @@ def general_setup(seed: int = 1, benchmark=True, hub_dir: str = 'tmp/'):
     torch.manual_seed(seed)
 
 
+def l2_normalize(output):
+    # Compute the L2 norm of the output along the last dimension
+    norm = torch.norm(output, p=2, dim=-1, keepdim=True)
+    # Divide the output by its norm to normalize
+    normalized_output = output / norm
+    return normalized_output
+
+
 class Trainer:
     def __init__(self, model, optimizer, scheduler, train_loader, val_loader, epochs, lr, batch_size, save_path,
                  save_every, test_every, loss_fn):
@@ -95,6 +103,7 @@ class Trainer:
     def _run_batch(self, X: torch.Tensor, y: torch.Tensor):
         self.optimizer.zero_grad()
         out = self.model.forward(X)
+        out = l2_normalize(out)
         # out = out.unsqueeze(1)  # Add dimension for contrastive loss
         # prob, pred = self.model.forward(X)
         # self.training_corrects += torch.sum(pred == y)
@@ -164,7 +173,7 @@ class Trainer:
             self.scheduler.step()
             if self.gpu_id == 0:
                 print(f"Epoch {epoch} took {round(end - start, 2)} seconds")
-            if epoch % self.save_every == 0:
+            if epoch % self.save_every == 0 or epoch == self.epochs - 1:
                 self.save_data()
             gc.collect()
 
@@ -186,7 +195,7 @@ def main():
     ddp_setup()
     train_loader = load_lymphoma_data_single_patches(args.batch_size, mode='train')
     # test_loader = load_lymphoma_data_single_patches(args.batch_size, mode='test')
-    model = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]))
+    model = HIPT_4K(device256=int(os.environ["LOCAL_RANK"]), device4k=int(os.environ["LOCAL_RANK"]), requires_grad=True)
     model.train()
     # classifier = ClassificationHead().to(int(os.environ["LOCAL_RANK"]))
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=0.05)
