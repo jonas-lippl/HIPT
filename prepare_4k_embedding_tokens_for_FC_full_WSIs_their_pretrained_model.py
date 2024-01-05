@@ -76,7 +76,11 @@ def extract_coordinates(string):
 
 def main(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = HIPT_4K(device256=device, device4k=device)
+    model = HIPT_4K(device256=device, device4k=device, requires_grad=False)
+    state_dict = torch.load("/mnt/experiments/hipt_4k_finetune_with_supcon_loss/model.pt", map_location="cpu")
+    state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
+    state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict)
 
     count = 0
 
@@ -84,7 +88,8 @@ def main(args):
     # For wsis with 0 overlap between 4k patches:
     wsi_dir = "/data/WSI_patches_4096px_2048mu"
     # wsi_embedding_dir = "/data/WSI_patches_4096px_2048mu_4k_embeddings"
-    wsi_embedding_dir = "/data/WSI_patches_4096px_2048mu_4k_embeddings_their_pretrained_model"
+    # wsi_embedding_dir = "/data/WSI_patches_4096px_2048mu_4k_embeddings_their_pretrained_model"
+    wsi_embedding_dir = "/data/WSI_patches_4096px_2048mu_4k_embeddings_supcon_finetune"
     # For wsis with 0.5 overlap between 4k patches:
     # wsi_dir = "/data/WSI_patches_4096px_2048mu_0.5overlap"
     # wsi_embedding_dir = "/data/WSI_patches_4096px_2048mu_0.5overlap_4k_embeddings"
@@ -108,8 +113,6 @@ def main(args):
                 embeddings[k] = out
             torch.save((embeddings, label), os.path.join(wsi_embedding_dir, f"{wsi}.pt"))
             count += 1
-            if count % 10 == 0:
-                print(f"Saved {count} patch 4k embeddings.")
         print(f"Saved {count} patch embeddings in total.")
 
 

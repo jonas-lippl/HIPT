@@ -93,7 +93,7 @@ def load_lymphoma_data_single_patch_embeddings(batch_size, mode='train'):
 
 def load_lymphoma_data_WSI_embeddings():
     # path_to_data = f"/data/WSI_patches_4096px_2048mu_4k_embeddings"
-    path_to_data = f"/data/WSI_patches_4096px_2048mu_4k_embeddings_their_pretrained_model"
+    path_to_data = f"/data/WSI_patches_4096px_2048mu_4k_embeddings_supcon_finetune"
     with open("/data/test_slides.txt", "r") as f:
         test_slides = f.readlines()
     test_slides = [slide.replace("\n", "") for slide in test_slides]

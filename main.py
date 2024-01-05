@@ -24,6 +24,7 @@ screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id 
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_their_pretrained_model --test_every=1; exec bash'
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_resnet_feature_extractor --test_every=1; exec bash'
 screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_supcon_loss_finetuned --test_every=1; exec bash'
+screen -dmS hipt sh -c 'docker run --shm-size=400gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main.py --batch_size=256 --save_folder=hipt_supcon_loss_finetuned_class_weights --test_every=1; exec bash'
 """
 
 parser = argparse.ArgumentParser(description='HIPT training for lymphoma images')
@@ -188,13 +189,13 @@ def main():
     optimizer = torch.optim.Adam(classifier.parameters(), lr=args.lr, weight_decay=0.05)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=args.warmup_epochs,
                                                 num_training_steps=args.epochs)
-    # y = np.array([y.numpy() for _, y in train_loader.dataset])  # replace this with your labels
-    #
-    # class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y), y=y)
-    # class_weights = [1, *class_weights]
-    #
-    # # Convert class weights to tensor
-    # class_weights = torch.tensor(class_weights, dtype=torch.float)
+    y = np.array([y.numpy() for _, y in train_loader.dataset])  # replace this with your labels
+
+    class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y), y=y)
+    class_weights = [1, *class_weights]
+
+    # Convert class weights to tensor
+    class_weights = torch.tensor(class_weights, dtype=torch.float)
     # print("Class weights: ", class_weights)
     trainer = Trainer(
         # feature_extractor=feature_extractor,
@@ -210,7 +211,7 @@ def main():
         save_path=args.save_folder,
         save_every=args.save_every,
         test_every=args.test_every,
-        loss_fn=torch.nn.CrossEntropyLoss()  # weight=class_weights.to(int(os.environ["LOCAL_RANK"])))
+        loss_fn=torch.nn.CrossEntropyLoss(weight=class_weights.to(int(os.environ["LOCAL_RANK"])))
     )
     trainer.train()
 

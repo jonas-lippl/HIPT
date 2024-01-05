@@ -120,7 +120,7 @@ def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     data_loader = load_lymphoma_data_WSI_embeddings()
     classifier = ClassificationHead().to(device)
-    classifier.load_state_dict(torch.load("/mnt/experiments/hipt_their_pretrained_model/classifier.pt"))
+    classifier.load_state_dict(torch.load("/mnt/experiments/hipt_supcon_loss_finetuned_class_weights/classifier.pt"))
 
     with torch.no_grad():
         correct = 0
@@ -132,10 +132,6 @@ def main():
             X, y = data
             X = X.to(device).squeeze(dim=0)
             y = y.to(device).squeeze(dim=0)
-            print("X shape: ", X.shape)
-            if X.shape[0] == 10:
-                print(f"Skipping WSI with {X.shape[0]} patches")
-                continue
             prob, pred = classifier.forward(X)
             print("Predictions: ", pred)
             per_class_pred = {i: 0 for i in range(7)}
