@@ -101,9 +101,6 @@ class Trainer:
     def _run_batch(self, X: torch.Tensor, y: torch.Tensor):
         self.optimizer.zero_grad()
         prob, pred = self.classifier.forward(X)
-        if self.gpu_id == 0:
-            print(f"X :{X[0]}")
-            print(f"X shape: {X.shape}")
         self.training_corrects += torch.sum(pred == y)
         loss = self.loss_fn(prob, y)
         loss.backward()
