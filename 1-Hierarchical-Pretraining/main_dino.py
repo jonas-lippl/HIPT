@@ -38,6 +38,7 @@ from vision_transformer import DINOHead
 """
 screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs/ --epochs 40 --batch_size_per_gpu 64; exec bash'
 screen -dmS hipt_resnet_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch resnet50 --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs_resnet/ --epochs 40 --batch_size_per_gpu 64; exec bash'
+screen -dmS hipt_camelyon256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_100_epochs_64_bs_vit/ --epochs 100 --batch_size_per_gpu 64; exec bash'
 """
 
 
@@ -55,6 +56,21 @@ class Custom_folder_DS(Dataset):
         if self.transform:
             return self.transform(data[0].div(255.0)), data[1]
         return data[0].div(255.0), data[1]
+
+
+class PathDataset(Dataset):
+    def __init__(self, paths, transform=None):
+        self.paths = paths
+        self.transform = transform
+
+    def __len__(self):
+        return len(self.paths)
+
+    def __getitem__(self, idx):
+        img, label = torch.load(self.paths[idx])
+        if self.transform:
+            return self.transform(img), label
+        return img, label
 
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -169,11 +185,19 @@ def train_dino(args):
     )
     path_to_data = args.data_path
     patches = []
-    with os.scandir(path_to_data) as it:
-        for i, file in enumerate(it):
-            patches.append(file.name)
+    # with os.scandir(path_to_data) as it:
+    #     for i, file in enumerate(it):
+    #         patches.append(file.name)
 
-    dataset = Custom_folder_DS(path_to_data, patches, transform=transform)
+    for center in os.listdir(path_to_data):
+        if '256' in center:
+            for patient in os.listdir(path_to_data + center):
+                for patch in os.listdir(path_to_data + center + '/' + patient):
+                    patches.append(path_to_data + center + '/' + patient + '/' + patch)
+
+    # dataset = Custom_folder_DS(path_to_data, patches, transform=transform)
+
+    dataset = PathDataset(paths=patches, transform=transform)
     sampler = DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
         dataset,
