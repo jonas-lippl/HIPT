@@ -1,34 +1,9 @@
-import argparse
-import os
-import sys
-import datetime
-import time
 import math
-import json
-from pathlib import Path
-
-import numpy as np
-from PIL import Image
-import torch
-import torch.nn as nn
-import torch.distributed as dist
-import torch.backends.cudnn as cudnn
-import torch.nn.functional as F
-from torchvision import datasets, transforms
-from torchvision import models as torchvision_models
-
-import utils
-import vision_transformer as vits
-from vision_transformer import DINOHead
-
-import math
+import warnings
 from functools import partial
 
 import torch
 import torch.nn as nn
-
-#from utils import trunc_normal_
-
 
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
@@ -72,7 +47,6 @@ def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
 
-
 def drop_path(x, drop_prob: float = 0., training: bool = False):
     if drop_prob == 0. or not training:
         return x
@@ -87,6 +61,7 @@ def drop_path(x, drop_prob: float = 0., training: bool = False):
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of residual blocks).
     """
+
     def __init__(self, drop_prob=None):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
@@ -164,16 +139,18 @@ class Block(nn.Module):
 
 class VisionTransformer4K(nn.Module):
     """ Vision Transformer 4K """
-    def __init__(self, num_classes=0, img_size=[224], input_embed_dim=384, output_embed_dim = 192,
-                 depth=12, num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, 
-                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, num_prototypes=64, **kwargs):
+
+    def __init__(self, num_classes=0, img_size=[224], input_embed_dim=384, output_embed_dim=192,
+                 depth=12, num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None,
+                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm, num_prototypes=64,
+                 **kwargs):
         super().__init__()
         embed_dim = output_embed_dim
         self.num_features = self.embed_dim = embed_dim
         self.phi = nn.Sequential(*[nn.Linear(input_embed_dim, output_embed_dim), nn.GELU(), nn.Dropout(p=drop_rate)])
-        num_patches = int(img_size[0] // 16)**2
+        num_patches = int(img_size[0] // 16) ** 2
         print("# of Patches:", num_patches)
-        
+
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         self.pos_drop = nn.Dropout(p=drop_rate)
@@ -225,13 +202,12 @@ class VisionTransformer4K(nn.Module):
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=1)
 
     def prepare_tokens(self, x):
-        #print('preparing tokens (after crop)', x.shape)
+        # print('preparing tokens (after crop)', x.shape)
         self.mpp_feature = x
         B, embed_dim, w, h = x.shape
-        x = x.flatten(2, 3).transpose(1,2)
+        x = x.flatten(2, 3).transpose(1, 2)
 
         x = self.phi(x)
-
 
         # add the [CLS] token to the embed patch tokens
         cls_tokens = self.cls_token.expand(B, -1, -1)
@@ -267,13 +243,15 @@ class VisionTransformer4K(nn.Module):
             if len(self.blocks) - i <= n:
                 output.append(self.norm(x))
         return output
-    
+
+
 def vit4k_xs(patch_size=16, **kwargs):
     model = VisionTransformer4K(
         patch_size=patch_size, input_embed_dim=384, output_embed_dim=192,
-        depth=6, num_heads=6, mlp_ratio=4, 
+        depth=6, num_heads=6, mlp_ratio=4,
         qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     return model
+
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)

@@ -21,7 +21,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -167,6 +166,7 @@ def get_args_parser():
     parser.add_argument("--dist_url", default="env://", type=str, help="""url used to set up
         distributed training; see https://pytorch.org/docs/stable/distributed.html""")
     parser.add_argument("--local_rank", default=0, type=int, help="Please ignore and do not set this argument.")
+    parser.add_argument("--use_labels", default='no', type=str, help="Should the labels be used for FACT training?")
     return parser
 
 

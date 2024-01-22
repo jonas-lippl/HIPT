@@ -25,6 +25,7 @@ import torch.nn.functional as F
 
 """
 screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
+screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
 """
 
 
@@ -53,7 +54,11 @@ def main(args):
         # train_dataset, val_dataset, test_dataset = dataset.return_splits(from_id=False,
         #                                                                  csv_path='{}/splits_{}.csv'.format(
         #                                                                      args.split_dir, i))
-        embeddings = os.listdir(os.path.join(args.data_root_dir, "WSI_patches_4096px_2048mu_4k_embeddings"))
+        embeddings = []
+        for center in os.listdir('/data'):
+            if 'center' in center:
+                for patient_node in os.listdir(os.path.join('/data', center, '4k_embedding_tokens')):
+                    embeddings.append(f"/data/{center}/4k_embedding_tokens/{patient_node}")
         random.shuffle(embeddings)
 
         # train_split_file = os.path.join(args.data_root_dir, "train_slides.txt")
@@ -61,15 +66,18 @@ def main(args):
         #     lines = file.readlines()
         # lines = [line.replace("\n", "") for line in lines]
         # print(f"{len(lines)} train slides found")
-        with open(os.path.join(args.data_root_dir, "train_slides.txt"), 'r') as file:
-            train_files = file.readlines()
-        train_files = [file.replace("\n", "") for file in train_files]
-        with open(os.path.join(args.data_root_dir, "test_slides.txt"), 'r') as file:
-            test_files = file.readlines()
-        test_files = [file.replace("\n", "") for file in test_files]
+        # with open(os.path.join(args.data_root_dir, "train_slides.txt"), 'r') as file:
+        #     train_files = file.readlines()
+        # train_files = [file.replace("\n", "") for file in train_files]
+        # with open(os.path.join(args.data_root_dir, "test_slides.txt"), 'r') as file:
+        #     test_files = file.readlines()
+        # test_files = [file.replace("\n", "") for file in test_files]
 
-        train_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
-                       for embedding in embeddings if embedding.split(".")[0] in train_files]
+        # train_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
+        #                for embedding in embeddings if embedding.split(".")[0] in train_files]
+
+        train_paths = embeddings[:int(len(embeddings) * 0.8)]
+
         train_dataset = PathDataset(train_paths)
         print("Train Dataset Size: ", len(train_dataset))
         # test_split_file = os.path.join(args.data_root_dir, "test_slides.txt")
@@ -77,8 +85,9 @@ def main(args):
         #     lines = file.readlines()
         # lines = [line.replace("\n", "") for line in lines]
         # print(f"{len(lines)} train slides found")
-        test_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
-                      for embedding in embeddings if embedding.split(".")[0] in test_files]
+        # test_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
+        #               for embedding in embeddings if embedding.split(".")[0] in test_files]
+        test_paths = embeddings[int(len(embeddings) * 0.8):]
         test_dataset = PathDataset(test_paths)
         print("Test Dataset Size: ", len(test_dataset))
         # for data in test_dataset:
@@ -115,7 +124,7 @@ def main(args):
 ### (Default) Training settings
 parser = argparse.ArgumentParser(description='Configurations for WSI Training')
 parser.add_argument('--data_root_dir', type=str, default='/data', help='data directory')
-parser.add_argument('--max_epochs', type=int, default=20, help='maximum number of epochs to train (default: 200)')
+parser.add_argument('--max_epochs', type=int, default=50, help='maximum number of epochs to train (default: 200)')
 parser.add_argument('--lr', type=float, default=2e-4, help='learning rate (default: 0.0001)')
 parser.add_argument('--label_frac', type=float, default=1.0, help='fraction of training labels (default: 1.0)')
 parser.add_argument('--reg', type=float, default=1e-5, help='weight decay (default: 1e-5)')
@@ -149,7 +158,7 @@ parser.add_argument('--model_type', type=str, default='hipt_gp', help='Type of m
                     choices=['clam_sb', 'clam_mb', 'mil', 'dgcn', 'mi_fcn', 'dsmil', 'hipt_n', 'hipt_lgp', 'hipt_gp'])
 parser.add_argument('--features', type=str, default='vits_lymphoma_subtypes', help='Which features to use',
                     choices=['resnet50_trunc', 'vits_tcga_pancancer_dino', 'vits_lymphoma_subtypes'])
-parser.add_argument('--task', type=str, default='lymphoma_subtype',
+parser.add_argument('--task', type=str, default='metastasis_stage_classification',
                     help='Which weakly-supervised task to evaluate on.')
 parser.add_argument('--path_input_dim', type=int, default=192, help='Size of patch embedding size (384 for DINO)')
 parser.add_argument('--mode', type=str, default='local_region_features', help='Which features to load')
@@ -184,7 +193,7 @@ if args.path_input_dim != 384:
     model_code += '_%d' % args.path_input_dim
 
 ### 3. Add task information in the experiment code.
-if 'subtype' in args.task:
+if 'subtype' in args.task or 'classification' in args.task:
     args.exp_code = '%s_%s_%s_%0.2f' % (args.task, model_code, args.features, args.prop)
     # args.splits = '10foldcv_subtype'
     # args.split_dir = './splits/%s/%s' % (args.splits, '_'.join(args.task.split('_')[:2]))
@@ -241,6 +250,8 @@ else:
     study_dir = '{}/extracted_mag20x_patch256_fp/{}_pt_patch_features'.format(study, args.features)
 if args.task == 'lymphoma_subtype':
     args.n_classes = 7
+if args.task == 'metastasis_stage_classification':
+    args.n_classes = 4
 # if args.task == 'tcga_lung_subtype':
 #     args.n_classes = 2
 #     dataset = Generic_MIL_Dataset(csv_path='./dataset_csv/tcga_lung_subset.csv.zip',
@@ -299,7 +310,7 @@ if args.task == 'lymphoma_subtype':
 if not os.path.isdir(args.results_dir):
     os.mkdir(args.results_dir)
 
-if 'subtype' in args.task:
+if 'subtype' in args.task or 'classification' in args.task:
     exp_folder = args.task
 args.results_dir = os.path.join(args.results_dir, exp_folder, str(args.exp_code) + '_none_s%d' % (args.seed))
 
