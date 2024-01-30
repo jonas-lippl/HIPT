@@ -25,7 +25,7 @@ import torch.nn.functional as F
 
 """
 screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
-screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
+screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17/patches:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
 """
 
 
@@ -56,7 +56,7 @@ def main(args):
         #                                                                      args.split_dir, i))
         embeddings = []
         for center in os.listdir('/data'):
-            if 'center' in center:
+            if '4096' in center and 'extra' not in center:
                 for patient_node in os.listdir(os.path.join('/data', center, '4k_embedding_tokens')):
                     embeddings.append(f"/data/{center}/4k_embedding_tokens/{patient_node}")
         random.shuffle(embeddings)

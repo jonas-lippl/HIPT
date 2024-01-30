@@ -38,7 +38,7 @@ from vision_transformer import DINOHead
 """
 screen -dmS hipt_4k_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/256x384_embedding_tokens:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit4k_xs --data_path /data/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs_additional_data/ --epochs 100 --batch_size_per_gpu 64; exec bash'
 screen -dmS hipt_4k_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/256x384_embedding_tokens_resnet:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit4k_xs --data_path /data/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs_resnet_features/ --epochs 100 --batch_size_per_gpu 64; exec bash'
-screen -dmS hipt_4k_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit4k_xs --data_path /data/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs_camelyon17/ --epochs 100 --batch_size_per_gpu 64; exec bash'
+screen -dmS hipt_4k_pretraining_camelyon sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino4k.py --arch vit4k_xs --data_path /data/patches/ --output_dir /mnt/ckpts/pretrain4k_100_epochs_64_bs_camelyon17/ --epochs 100 --batch_size_per_gpu 64; exec bash'
 """
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -152,7 +152,7 @@ def train_dino(args):
     patches = []
     path_to_data = args.data_path
     for center in os.listdir(path_to_data):
-        if '4k' in center:
+        if '4096' in center:
             for patient in os.listdir(path_to_data + center + '/256x384_embedding_tokens'):
                 for embedding in os.listdir(path_to_data + center + '/256x384_embedding_tokens/' + patient):
                     patches.append(path_to_data + center + '/256x384_embedding_tokens/' + patient + '/' + embedding)

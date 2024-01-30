@@ -47,8 +47,8 @@ def main(args):
     vit4k.to(device)
 
     count = 0
-    embedding_dir = f"/data/patches_center_{args.center}_4k/256x384_embedding_tokens"
-    wsi_embedding_dir = f"/data/patches_center_{args.center}_4k/4k_embedding_tokens"
+    embedding_dir = f"/data/patches/patches_{args.center}_4096_lvl_1/256x384_embedding_tokens"
+    wsi_embedding_dir = f"/data/patches/patches_{args.center}_4096_lvl_1/4k_embedding_tokens"
 
     stage_labels = pd.read_csv("/data/stage_labels.csv")
     if not os.path.exists(wsi_embedding_dir):
@@ -56,6 +56,7 @@ def main(args):
     with torch.no_grad():
         for patient in tqdm(os.listdir(embedding_dir)):
             patches = os.listdir(os.path.join(embedding_dir, patient))
+            patches.sort()
             print(f"Processing {patient} with {len(patches)} patches.")
             num_patches = len(patches)
             if num_patches == 0:
