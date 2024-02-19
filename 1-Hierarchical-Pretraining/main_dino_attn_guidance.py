@@ -35,27 +35,8 @@ import vision_transformer as vits
 from vision_transformer import DINOHead
 
 """
-screen -dmS hipt_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs/ --epochs 40 --batch_size_per_gpu 64; exec bash'
-screen -dmS hipt_resnet_256_pretraining sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data/single_256_px_128mu:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch resnet50 --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs_resnet/ --epochs 40 --batch_size_per_gpu 64; exec bash'
-screen -dmS hipt_camelyon256_pretraining_zoom_1 sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17/patches:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs_vit_camelyon17/ --epochs 40 --batch_size_per_gpu 64; exec bash'
-screen -dmS hipt_camelyon256_pretraining_zoom_0 sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17/patches:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs_vit_camelyon17_zoom_lvl_0/ --epochs 40 --batch_size_per_gpu 64; exec bash'
+screen -dmS hipt_camelyon256_pretraining_zoom_1_attn_guidance sh -c 'docker run --shm-size=200gb --gpus all  -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17/patches:/data -v /sybig/home/jol/Code/HIPT/1-Hierarchical-Pretraining:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/main_dino_attn_guidance.py --arch vit_small --data_path /data/ --output_dir /mnt/ckpts/pretrain_40_epochs_64_bs_vit_camelyon17_zoom_lvl_1_attn_guidance/ --epochs 40 --batch_size_per_gpu 64; exec bash'
 """
-
-
-class Custom_folder_DS(Dataset):
-    def __init__(self, path, names, transform=None):
-        self.names = names
-        self.path = path
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.names)
-
-    def __getitem__(self, idx):
-        data = torch.load(self.path + "/" + self.names[idx])
-        if self.transform:
-            return self.transform(data[0].div(255.0)), data[1]
-        return data[0].div(255.0), data[1]
 
 
 class PathDataset(Dataset):
@@ -67,10 +48,17 @@ class PathDataset(Dataset):
         return len(self.paths)
 
     def __getitem__(self, idx):
-        img, label = torch.load(self.paths[idx])
+        data = torch.load(self.paths[idx])
+        mask = torch.zeros((1, 256, 256))
+        label = torch.tensor(0.0)
+        if len(data) == 2:
+            img, _ = data
+        else:
+            img, _, mask = data
         if self.transform:
-            return self.transform(img.div(255.0)), label
-        return img.div(255.0), label
+            # print(f"Types: img {img.dtype}, label {label.dtype}, mask {mask.dtype}")
+            return self.transform(img.div(255.0)), label, mask
+        return img.div(255.0), label, mask
 
 
 torchvision_archs = sorted(name for name in torchvision_models.__dict__
@@ -191,8 +179,7 @@ def train_dino(args):
     #         patches.append(file.name)
 
     for center in os.listdir(path_to_data):
-        if '256_lvl_0_regression' in center:
-        # if '256_lvl_1_no_annotation' in center:
+        if '256_lvl_1_no_annotation' in center or '256_lvl_1_with_annotation_mask' in center:
             for patient in os.listdir(path_to_data + center):
                 for patch in os.listdir(path_to_data + center + '/' + patient):
                     patches.append(path_to_data + center + '/' + patient + '/' + patch)
@@ -362,7 +349,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
     metric_logger = utils.MetricLogger(delimiter="  ")
     start = time.time()
     header = 'Epoch: [{}/{}]'.format(epoch, args.epochs)
-    for it, (images, _) in enumerate(metric_logger.log_every(data_loader, 10, header)):
+    for it, (images, labels, masks) in enumerate(metric_logger.log_every(data_loader, 10, header)):
         # update weight decay and learning rate according to their schedule
         it = len(data_loader) * epoch + it  # global training iteration
         for i, param_group in enumerate(optimizer.param_groups):
@@ -377,6 +364,20 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
             student_output = student(images)
             loss = dino_loss(student_output, teacher_output, epoch)
+
+            # Compute attention guidance loss
+            images_with_masks = [im[0] for i, im in enumerate(images) if not torch.all(torch.eq(masks[i], torch.zeros((1, 256, 256)))).item()]
+            masks = [mask for mask in masks if not torch.all(torch.eq(mask, torch.zeros((1, 256, 256)))).item()]
+            if len(images_with_masks) > 0:
+                images_with_masks = torch.stack(images_with_masks).to("cuda")
+                masks = torch.stack(masks).to("cuda")
+                student_attentions = student.module.backbone.get_last_selfattention(images_with_masks)
+                print(f"Student attentions: {student_attentions.shape}")
+                print(f"Masks: {masks.shape}")
+                attention_guidance_loss = ((student_attentions - masks) ** 2).mean()
+                if int(os.environ["LOCAL_RANK"]) == 0:
+                    print(f"Attention guidance loss: {attention_guidance_loss.item()}")
+                loss += attention_guidance_loss
 
         if not math.isfinite(loss.item()):
             print(f"Loss is {loss.item()}, stopping training, GPU: {args.gpu}")
@@ -407,7 +408,6 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             m = momentum_schedule[it]  # momentum parameter
             for param_q, param_k in zip(student.module.parameters(), teacher_without_ddp.parameters()):
                 param_k.data.mul_(m).add_((1 - m) * param_q.detach().data)
-
         # logging
         torch.cuda.synchronize()
         metric_logger.update(loss=loss.item())

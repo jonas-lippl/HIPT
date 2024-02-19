@@ -144,20 +144,21 @@ def train(datasets, cur, args):
     print("Testing on {} samples".format(len(test_split)))
 
     print('\nInit loss function...', end=' ')
-    y = np.array([y.numpy() for _, y in train_split])  # replace this with your labels
+    # y = np.array([y.numpy() for _, y in train_split])  # replace this with your labels
 
-    class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y), y=y)
-    print('Class weights: ', class_weights)
+    # class_weights = class_weight.compute_class_weight('balanced', classes=np.unique(y), y=y)
+    # print('Class weights: ', class_weights)
     # Convert class weights to tensor
-    class_weights = torch.tensor(class_weights, dtype=torch.float).cuda()
+    # class_weights = torch.tensor(class_weights, dtype=torch.float).cuda()
     if args.bag_loss == 'svm':
         from topk import SmoothTop1SVM
         loss_fn = SmoothTop1SVM(n_classes=args.n_classes)
         if device.type == 'cuda':
             loss_fn = loss_fn.cuda()
     else:
-        print("Using cross entropy loss with class weights")
-        loss_fn = nn.CrossEntropyLoss(weight=class_weights)
+        print("Using cross entropy loss")
+        loss_fn = nn.CrossEntropyLoss()
+        # loss_fn = nn.CrossEntropyLoss(weight=class_weights)
     print('Done!')
 
     print('\nInit Model...', end=' ')
@@ -349,8 +350,8 @@ def validate(cur, epoch, model, loader, n_classes, early_stopping=None, writer=N
     val_error = 0.
 
     # n_classes - 1 if Unknown class is in data
-    # prob = np.zeros((len(loader), n_classes-1))
-    prob = np.zeros((len(loader), n_classes))
+    prob = np.zeros((len(loader), n_classes-1))
+    # prob = np.zeros((len(loader), n_classes))
     labels = np.zeros(len(loader))
 
     with torch.no_grad():
@@ -371,8 +372,8 @@ def validate(cur, epoch, model, loader, n_classes, early_stopping=None, writer=N
             loss = loss_fn(logits, label)
             # TODO: Remove when samples with label "Unknown" are in data
             # Remove Unknown class from predictions since it does not occur and therefore auc calculation fails. Softmax necess
-            # prob[batch_idx] = F.softmax(Y_prob[:, 1:], dim=1).cpu().numpy()
-            prob[batch_idx] = Y_prob.cpu().numpy()
+            prob[batch_idx] = F.softmax(Y_prob[:, 1:], dim=1).cpu().numpy()
+            # prob[batch_idx] = Y_prob.cpu().numpy()
             labels[batch_idx] = label.item()
 
             val_loss += loss.item()

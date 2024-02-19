@@ -104,10 +104,9 @@ class Trainer:
         self.optimizer.zero_grad()
         out = self.model.forward(X)
         out = l2_normalize(out)
-        # out = out.unsqueeze(1)  # Add dimension for contrastive loss
         # prob, pred = self.model.forward(X)
         # self.training_corrects += torch.sum(pred == y)
-        loss = self.loss_fn(out.unsqueeze(1), y)
+        loss = self.loss_fn(out.unsqueeze(1), y)  # Add dimension for contrastive loss
         loss.backward()
         self.intermediate_losses.append(loss.item())
         self.optimizer.step()

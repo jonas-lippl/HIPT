@@ -24,8 +24,8 @@ import torch.nn.functional as F
 
 
 """
-screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
-screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17/patches:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py; exec bash'
+screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/home/jol/Code/blobyfire/data:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py --task=lymphoma_subtype; exec bash'
+screen -dmS hipt_WSI_finetuning sh -c 'docker run --shm-size=200gb --gpus \"device=7\" -it --rm -u `id -u $USER` -v /sybig/projects/camelyon17/patches:/data -v /sybig/home/jol/Code/HIPT/2-Weakly-Supervised-Subtyping:/mnt jol_hipt python3 /mnt/main.py --task=metastasis_stage_classification; exec bash'
 """
 
 
@@ -54,42 +54,49 @@ def main(args):
         # train_dataset, val_dataset, test_dataset = dataset.return_splits(from_id=False,
         #                                                                  csv_path='{}/splits_{}.csv'.format(
         #                                                                      args.split_dir, i))
-        embeddings = []
-        for center in os.listdir('/data'):
-            if '4096' in center and 'extra' not in center:
-                for patient_node in os.listdir(os.path.join('/data', center, '4k_embedding_tokens')):
-                    embeddings.append(f"/data/{center}/4k_embedding_tokens/{patient_node}")
+        # Camelyon17
+        # embeddings = []
+        # for center in os.listdir('/data'):
+        #     if '4096' in center and 'extra' not in center:
+        #         for patient_node in os.listdir(os.path.join('/data', center, '4k_embedding_tokens')):
+        #             embeddings.append(f"/data/{center}/4k_embedding_tokens/{patient_node}")
+        # random.shuffle(embeddings)
+        # train_paths = embeddings[:int(len(embeddings) * 0.8)]
+        # test_paths = embeddings[int(len(embeddings) * 0.8):]
+
+
+        # Lymphoma
+        embeddings = os.listdir(os.path.join(args.data_root_dir, "WSI_patches_4096px_2048mu_4k_embeddings"))
         random.shuffle(embeddings)
+        train_split_file = os.path.join(args.data_root_dir, "train_slides.txt")
+        with open(train_split_file, 'r') as file:
+            lines = file.readlines()
+        lines = [line.replace("\n", "") for line in lines]
+        print(f"{len(lines)} train slides found")
+        with open(os.path.join(args.data_root_dir, "train_slides.txt"), 'r') as file:
+            train_files = file.readlines()
+        train_files = [file.replace("\n", "") for file in train_files]
+        with open(os.path.join(args.data_root_dir, "test_slides.txt"), 'r') as file:
+            test_files = file.readlines()
+        test_files = [file.replace("\n", "") for file in test_files]
 
-        # train_split_file = os.path.join(args.data_root_dir, "train_slides.txt")
-        # with open(train_split_file, 'r') as file:
-        #     lines = file.readlines()
-        # lines = [line.replace("\n", "") for line in lines]
-        # print(f"{len(lines)} train slides found")
-        # with open(os.path.join(args.data_root_dir, "train_slides.txt"), 'r') as file:
-        #     train_files = file.readlines()
-        # train_files = [file.replace("\n", "") for file in train_files]
-        # with open(os.path.join(args.data_root_dir, "test_slides.txt"), 'r') as file:
-        #     test_files = file.readlines()
-        # test_files = [file.replace("\n", "") for file in test_files]
-
-        # train_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
-        #                for embedding in embeddings if embedding.split(".")[0] in train_files]
-
-        train_paths = embeddings[:int(len(embeddings) * 0.8)]
+        train_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
+                       for embedding in embeddings if embedding.split(".")[0] in train_files]
+        test_split_file = os.path.join(args.data_root_dir, "test_slides.txt")
+        with open(test_split_file, 'r') as file:
+            lines = file.readlines()
+        lines = [line.replace("\n", "") for line in lines]
+        print(f"{len(lines)} train slides found")
+        test_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
+                      for embedding in embeddings if embedding.split(".")[0] in test_files]
 
         train_dataset = PathDataset(train_paths)
         print("Train Dataset Size: ", len(train_dataset))
-        # test_split_file = os.path.join(args.data_root_dir, "test_slides.txt")
-        # with open(test_split_file, 'r') as file:
-        #     lines = file.readlines()
-        # lines = [line.replace("\n", "") for line in lines]
-        # print(f"{len(lines)} train slides found")
-        # test_paths = [f"{args.data_root_dir}/WSI_patches_4096px_2048mu_4k_embeddings/{embedding}"
-        #               for embedding in embeddings if embedding.split(".")[0] in test_files]
-        test_paths = embeddings[int(len(embeddings) * 0.8):]
+
         test_dataset = PathDataset(test_paths)
         print("Test Dataset Size: ", len(test_dataset))
+
+        # Sanity Check
         # for data in test_dataset:
         #     X, y, name = data
         #     if X.shape[0] == 0:
