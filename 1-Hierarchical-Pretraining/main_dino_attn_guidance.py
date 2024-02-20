@@ -362,21 +362,25 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
         # teacher and student forward passes + compute dino loss
         with torch.cuda.amp.autocast(fp16_scaler is not None):
             teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
-            student_output = student(images)
+            student_output = student(images[:10])
             loss = dino_loss(student_output, teacher_output, epoch)
 
             # Compute attention guidance loss
-            images_with_masks = [im[0] for i, im in enumerate(images) if not torch.all(torch.eq(masks[i], torch.zeros((1, 256, 256)))).item()]
+            images_with_masks = [im for i, im in enumerate(images[-1]) if
+                                 not torch.all(torch.eq(masks[i], torch.zeros((1, 256, 256)))).item()]
             masks = [mask for mask in masks if not torch.all(torch.eq(mask, torch.zeros((1, 256, 256)))).item()]
+            # print("Number of images with mask: ", len(images_with_masks))
             if len(images_with_masks) > 0:
                 images_with_masks = torch.stack(images_with_masks).to("cuda")
                 masks = torch.stack(masks).to("cuda")
+                # print(f"Images with masks: {images_with_masks.shape}")
                 student_attentions = student.module.backbone.get_last_selfattention(images_with_masks)
-                print(f"Student attentions: {student_attentions.shape}")
-                print(f"Masks: {masks.shape}")
+                student_attentions = student_attentions[:, :, 1:, 1:].mean(dim=1)
+                # print(f"Student attentions: {student_attentions.shape}")
+                # print(f"Masks: {masks.shape}")
                 attention_guidance_loss = ((student_attentions - masks) ** 2).mean()
-                if int(os.environ["LOCAL_RANK"]) == 0:
-                    print(f"Attention guidance loss: {attention_guidance_loss.item()}")
+                # if int(os.environ["LOCAL_RANK"]) == 0:
+                print(f"Attention guidance loss: {attention_guidance_loss.item()}")
                 loss += attention_guidance_loss
 
         if not math.isfinite(loss.item()):
@@ -511,11 +515,13 @@ class DataAugmentationDINO(object):
             utils.GaussianBlurTensor(min_kernel_size=3, max_kernel_size=7, sigma=1.0, p=0.5),
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ])
+        self.normalize_only = transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225))
 
     def __call__(self, image):
         crops = [self.global_transfo1(image), self.global_transfo2(image)]
         for _ in range(self.local_crops_number):
             crops.append(self.local_transfo(image))
+        crops.append(self.normalize_only(image))
         return crops
 
 
