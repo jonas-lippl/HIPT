@@ -173,19 +173,30 @@ def train_dino(args):
         args.local_crops_number,
     )
     path_to_data = args.data_path
-    patches = []
+    # no_annotation_patches = []
     # with os.scandir(path_to_data) as it:
     #     for i, file in enumerate(it):
     #         patches.append(file.name)
-
+    #
+    # for center in os.listdir(path_to_data):
+    #     if '256_lvl_1_no_annotation' in center:
+    #         for patient in os.listdir(path_to_data + center):
+    #             for patch in os.listdir(path_to_data + center + '/' + patient):
+    #                 no_annotation_patches.append(path_to_data + center + '/' + patient + '/' + patch)
+    annotation_patches = []
     for center in os.listdir(path_to_data):
-        if '256_lvl_1_no_annotation' in center or '256_lvl_1_with_annotation_mask' in center:
+        if '256_lvl_1_with_annotation_mask' in center:
             for patient in os.listdir(path_to_data + center):
                 for patch in os.listdir(path_to_data + center + '/' + patient):
-                    patches.append(path_to_data + center + '/' + patient + '/' + patch)
+                    annotation_patches.append(path_to_data + center + '/' + patient + '/' + patch)
 
     # dataset = Custom_folder_DS(path_to_data, patches, transform=transform)
 
+    # dataset_annotations = PathDataset(paths=annotation_patches,
+    #                                   transform=transforms.Normalize((0.485, 0.456, 0.406),
+    #                                                                  (0.229, 0.224, 0.225)))
+    # dataset_no_annotations = PathDataset(paths=no_annotation_patches, transform=transform)
+    patches = annotation_patches  # + no_annotation_patches
     dataset = PathDataset(paths=patches, transform=transform)
     sampler = DistributedSampler(dataset, shuffle=True)
     data_loader = torch.utils.data.DataLoader(
@@ -364,6 +375,7 @@ def train_one_epoch(student, teacher, teacher_without_ddp, dino_loss, data_loade
             teacher_output = teacher(images[:2])  # only the 2 global views pass through the teacher
             student_output = student(images[:10])
             loss = dino_loss(student_output, teacher_output, epoch)
+            print(f"DINO loss: {loss.item()}")
 
             # Compute attention guidance loss
             images_with_masks = [im for i, im in enumerate(images[-1]) if
