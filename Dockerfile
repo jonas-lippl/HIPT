@@ -34,3 +34,4 @@ RUN pip3 install pamly
 ENV MPLCONFIGDIR=/tmp/matplotlib
 ENV OMP_NUM_THREADS=1
 ENV TRANSFORMERS_CACHE=/tmp/transformers_cache
+ENV HF_HOME=/tmp/huggingface
