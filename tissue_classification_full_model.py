@@ -191,6 +191,8 @@ def main():
                 loss = F.cross_entropy(output, label)
                 test_loss += loss.item()
                 pred = output.argmax(1)
+                if gpu_id == 0:
+                    print(f"Pred: {pred}")
                 correct += torch.sum(pred == label).item()
                 total += len(label)
                 for p, l in zip(pred, label):
@@ -207,7 +209,7 @@ def main():
         accuracy = accuracy / dist.get_world_size()
         test_losses.append(test_loss / len(test_loader))
         if gpu_id == 0:
-            print(f"Accuracy: {round(accuracy, 4)}")
+            print(f"Accuracy: {round(accuracy.item(), 4)}")
         for i in range(2):
             # for i in range(20):
             print(
