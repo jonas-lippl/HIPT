@@ -8,15 +8,18 @@ import timm
 import torch
 import torch.nn.functional as F
 from torch.distributed import init_process_group
+from torch.nn import SyncBatchNorm
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.data import Dataset, DataLoader, DistributedSampler
 from torchvision import transforms
+from torchvision.models import resnet50, ResNet50_Weights
 from tqdm import tqdm
 from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
 """
 screen -dmS binary_tissue_classification_lr_decay_full_model sh -c 'docker run --shm-size=400gb --gpus \"device=0,1,2,3,4,5,6,7\" --name jol_job2  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/tissue_classification_full_model.py; exec bash'
+screen -dmS binary_tissue_classification_lr_decay_resnet50 sh -c 'docker run --shm-size=400gb --gpus \"device=0,1,2,3,4,5,6,7\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/tissue_classification_full_model.py; exec bash'
 screen -dmS binary_tissue_classification_lr_decay_patch_based_train_test_split_full_model sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=1 /mnt/tissue_classification_full_model.py; exec bash'
 """
 
@@ -75,7 +78,7 @@ class PathDataset(Dataset):
 class UNI_classifier(torch.nn.Module):
     def __init__(self, n_classes=20):
         super().__init__()
-        self.fc1 = torch.nn.Linear(1024, 512)
+        self.fc1 = torch.nn.Linear(1000, 512)
         # self.batch_norm = torch.nn.BatchNorm1d(512)
         self.fc2 = torch.nn.Linear(512, n_classes)
         # self.dropout = torch.nn.Dropout(0.25)
@@ -85,7 +88,7 @@ class UNI_classifier(torch.nn.Module):
         x = torch.nn.functional.relu(x)
         # x = self.dropout(x)
         x = self.fc2(x)
-        return F.softmax(x, dim=1)
+        return F.sigmoid(x)
 
 
 def ddp_setup():
@@ -96,15 +99,17 @@ def ddp_setup():
 def main():
     ddp_setup()
     torch.hub.set_dir("tmp/")
+    torch.manual_seed(0)
     gpu_id = int(os.environ["LOCAL_RANK"])
 
     classifier = UNI_classifier(n_classes=2)
     classifier = DDP(classifier.to(gpu_id), device_ids=[gpu_id])
-    model = timm.create_model(
-        "vit_large_patch16_224", img_size=224, patch_size=16, init_values=1e-5, num_classes=0, dynamic_img_size=True
-    )
-    local_dir = "./tmp/vit_large_patch16_256.dinov2.uni_mass100k"
-    model.load_state_dict(torch.load(os.path.join(local_dir, "model.pth"), map_location="cpu"), strict=True)
+    # model = timm.create_model(
+    #     "vit_large_patch16_224", img_size=224, patch_size=16, init_values=1e-5, num_classes=0, dynamic_img_size=True
+    # )
+    # local_dir = "./tmp/vit_large_patch16_256.dinov2.uni_mass100k"
+    # model.load_state_dict(torch.load(os.path.join(local_dir, "model.pth"), map_location="cpu"), strict=True)
+    model = SyncBatchNorm.convert_sync_batchnorm(resnet50(weights=ResNet50_Weights.IMAGENET1K_V1))
     model = DDP(model.to(gpu_id), device_ids=[gpu_id])
 
     effective_batch_size = 64
@@ -190,9 +195,8 @@ def main():
                 output = classifier(embedding)
                 loss = F.cross_entropy(output, label)
                 test_loss += loss.item()
-                pred = output.argmax(1)
-                if gpu_id == 0:
-                    print(f"Pred: {pred}")
+                pred = output.argmax(dim=1)
+                # print("Output: ", output)
                 correct += torch.sum(pred == label).item()
                 total += len(label)
                 for p, l in zip(pred, label):
@@ -224,15 +228,15 @@ def main():
         if gpu_id == 0:
             print(f"Epoch took {stop - start} seconds")
 
-    if not os.path.exists("./experiments/tissue_classifier_lr_decay_full_model"):
-        os.makedirs("./experiments/tissue_classifier_lr_decay_full_model")
-    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_lr_decay_full_model/classifier.pt")
-    torch.save(model.state_dict(), "./experiments/tissue_classifier_lr_decay_full_model/feature_extractor.pt")
+    if not os.path.exists("./experiments/tissue_classifier_lr_decay_resnet50"):
+        os.makedirs("./experiments/tissue_classifier_lr_decay_resnet50")
+    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_lr_decay_resnet50/classifier.pt")
+    torch.save(model.state_dict(), "./experiments/tissue_classifier_lr_decay_resnet50/feature_extractor.pt")
 
     plt.plot(train_losses, label="Train Loss")
     plt.plot(test_losses, label="Test Loss")
     plt.legend()
-    plt.savefig("./plots/tissue_classification_loss_full_model.png")
+    plt.savefig("./plots/tissue_classification_loss_resnet50.png")
 
 
 if __name__ == '__main__':
