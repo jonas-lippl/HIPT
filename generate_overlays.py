@@ -1,4 +1,5 @@
 import logging
+import random
 import sqlite3
 from io import BytesIO
 
@@ -14,8 +15,7 @@ import argparse
 from PIL import Image
 from torchvision import transforms
 from tqdm import tqdm
-
-from tissue_classification import UNI_classifier
+import torch.nn.functional as F
 
 
 INT2STR_LABEL_MAP = {
@@ -24,14 +24,34 @@ INT2STR_LABEL_MAP = {
 }
 
 
+class UNI_classifier(torch.nn.Module):
+    def __init__(self, n_classes=20):
+        super().__init__()
+        self.fc1 = torch.nn.Linear(1024, 512)
+        self.batch_norm = torch.nn.BatchNorm1d(512)
+        self.fc2 = torch.nn.Linear(512, n_classes)
+        # self.dropout = torch.nn.Dropout(0.25)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = torch.nn.functional.relu(x)
+        # x = self.dropout(x)
+        x = self.fc2(x)
+        return F.softmax(x, dim=1)
+
+
 def choose_one_slide_per_class_for_testing() -> dict:
     """ Chooses one slide for each class for testing.
 
     Returns:
         dict: Dict containing the slide name and the corresponding label, one for each class.
     """
-    slides = {"HL": None, "DLBCL": None, "CLL": None, "FL": None, "MCL": None, "Lts": None}
-    for slide in os.listdir("/data/sqlite"):
+    slides = {"FL": None, "CLL": None, "HL": None, "DLBCL": None, "MCL": None, "Lts": None}
+    all_slides = os.listdir("/data/sqlite")
+    random.shuffle(all_slides)
+    for slide in all_slides:
+        if "HE" not in slide:
+            continue
         diagnosis = slide.split(".")[0].split("-")[-1]
         if slides[diagnosis] is None:
             slides[diagnosis] = os.path.join("/data/sqlite", slide)
@@ -117,7 +137,6 @@ def get_tile_from_database(cursor: sqlite3.Cursor, x: int, y: int, level: int) -
         bytes_io = BytesIO(tiles[0][0])
         # Read the image from the BytesIO object using PIL.Image.open()
         with Image.open(bytes_io) as pil_image:  # returns an image array in NumPy format
-            # Convert the PIL image to a NumPy array and append to y_tiles
             img = np.array(pil_image)
     else:
         raise Exception(f"Error: Found more than one tile for the coordinates {x}, {y}.")
@@ -146,21 +165,22 @@ def generate_overlay_plot(
         slide_path = os.path.join(path_to_data, slide_and_label[1])
         correct_diagnosis = slide_and_label[0]
         level = get_max_level(sqlite_path=slide_path)
+        print(f"Max level: {level}")
         coordinates = get_coordinates_from_database(slide_path, level)
         x_min, x_max, y_min, y_max = get_limits_of_plot(coordinates)
+        print(f"Coordinate limits: {x_min}, {x_max}, {y_min}, {y_max}")
 
         # create empty plot on which we place the patches where they belong using the coordinates
-        fig, ax = plt.subplots(1, 1, figsize=(10, 10))
-        ax.set_xlim(x_min, x_max)
-        ax.set_ylim(y_min, y_max)
-        ax.set_aspect('equal', adjustable='box')
-
+        fig, ax = plt.subplots(1, 1, figsize=(30, 30))
         patch_size = 512
-
-        ax, colors = plot_patches(feature_extractor, classifier, device, coordinates, patch_size, correct_diagnosis,
+        ax.set_xlim(x_min*patch_size, x_max*patch_size)
+        ax.set_ylim(y_min*patch_size, y_max*patch_size)
+        ax.set_aspect('equal', adjustable='box')
+        random.shuffle(coordinates)
+        plot_patches(feature_extractor, classifier, device, coordinates, patch_size, correct_diagnosis,
                                   ax, level, slide_path)
 
-        add_labels_and_save_plot(ax, colors, correct_diagnosis, slide_and_label[1], dpi=dpi)
+        # add_labels_and_save_plot(ax, colors, correct_diagnosis, slide_and_label[1], dpi=dpi)
 
 
 ##############################################
@@ -183,22 +203,29 @@ def get_limits_of_plot(coordinates: list) -> tuple:
 
 def plot_patches(feature_extractor: torch.nn.Module, classifier: torch.nn.Module, device: torch.device,
                  coordinates: list, patch_size: int, correct_diagnosis: int, ax: plt.Axes,
-                 level: int, slide_path: str) -> tuple[plt.Axes, list[str]]:
+                 level: int, slide_path: str) -> None:
     # create list of colors for the different classes
     colors = ['green', 'blue']
     transform = transforms.Compose([
         transforms.Resize(224, antialias=True),
         transforms.Normalize(mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)),
     ])
+    count = 0
+    name = slide_path.split('.')[0].split('/')[-1]
+    save_path = f"./plots/{name}"
+    if not os.path.exists(save_path):
+        os.makedirs(save_path, exist_ok=True)
     with sqlite3.connect(slide_path) as conn:
         cursor = conn.cursor()
         # iterate over all patches and plot them on the empty plot
         for (x, y) in tqdm(coordinates, f"Patches for class {correct_diagnosis}"):
-            img = get_tile_from_database(cursor, x, y, level).clip(max=255).astype('uint8')
+            img = get_tile_from_database(cursor, x, y, level)
+            # print("Image shape: ", img.shape)
             tile = np.transpose(img, (2, 1, 0))
             tile = torch.from_numpy(tile)
             tile = transform(tile.div(255)).unsqueeze(0)
-            ax.imshow(img, extent=(x, x + patch_size, y, y - patch_size))
+            # img = img / 255.0
+            # ax.imshow(img, extent=(x*patch_size, x*patch_size + patch_size, y*patch_size, y*patch_size - patch_size))
 
             # get prediction of current patch
             tile = tile.to(device)
@@ -206,13 +233,18 @@ def plot_patches(feature_extractor: torch.nn.Module, classifier: torch.nn.Module
             output = classifier(embedding)
             _, pred = torch.max(output, 1)  # get the index of the class with the highest probability
             pred = pred.cpu().numpy()
-
+            if pred[0] == 1:
+                count += 1
+                plt.imsave(f"{save_path}/tumor_pred_{count}.png", img)
+            if count == 20:
+                break
             # add colored square on top of the patch according to the prediction
-            rectangle = patches.Rectangle((x, y - patch_size), patch_size, patch_size, edgecolor='none',
-                                          facecolor=colors[pred[0]], alpha=0.4)
-            ax.add_patch(rectangle)
+            # rectangle = patches.Rectangle((x*patch_size, y*patch_size - patch_size), patch_size, patch_size, edgecolor='none',
+            #                               facecolor=colors[pred[0]], alpha=0.1)
+            # ax.add_patch(rectangle)
+        cursor.close()
 
-    return ax, colors
+    # return ax, colors
 
 
 def add_labels_and_save_plot(ax: plt.Axes, colors: list[str], correct_diagnosis: str,
@@ -224,13 +256,14 @@ def add_labels_and_save_plot(ax: plt.Axes, colors: list[str], correct_diagnosis:
     ax.set_title(f"Correct diagnosis: {correct_diagnosis}")
 
     # save fig as vector graphic
-    name = slide_name.split('.')[0] + "_overlay.png"
+    name = slide_name.split('.')[0].split('/')[-1] + "_overlay.png"
     path = os.path.join("./plots", name)
+    print(f"Saving plot to {path}")
     plt.savefig(path, dpi=dpi)
     plt.close()
 
 
-###########################################################################################################################
+#################################################
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Generate overlay plots for testing slides.")
@@ -263,7 +296,7 @@ def main(dpi: int, path_to_data: str):
 
 
 """
-screen -dmS generate_overlay_plots sh -c 'docker run --shm-size=400gb --gpus \"device=0\"  -it --rm -u `id -u $USER` --name jol_job1 -v /sybig/home/jol/Code/HIPT:/mnt -v /sybig/projects/FedL/data:/data jol_hipt python3 /mnt/generate_overlays.py --dpi=1500 --path_to_data=./data/sqlite; exec bash'
+screen -dmS generate_overlay_plots sh -c 'docker run --shm-size=400gb --gpus \"device=1\"  -it --rm -u `id -u $USER` --name jol_job2 -v /sybig/home/jol/Code/HIPT:/mnt -v /sybig/projects/FedL/data:/data jol_hipt python3 /mnt/generate_overlays.py --dpi=1000 --path_to_data=./data/sqlite; exec bash'
 """
 
 if __name__ == "__main__":

@@ -12,6 +12,13 @@ from tqdm import tqdm
 """
 screen -dmS tissue_classification sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_smaller_model_slide_split sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_smaller_model_AdamW_0.01_weight_decay sh -c 'docker run --shm-size=400gb --gpus \"device=2\" --name jol_job3  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_dropout sh -c 'docker run --shm-size=400gb --gpus \"device=3\" --name jol_job2  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_0.5_dropout sh -c 'docker run --shm-size=400gb --gpus \"device=1\" --name jol_job2  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_0.5_dropout_patch_based_train_test_split sh -c 'docker run --shm-size=400gb --gpus \"device=2\" --name jol_job3  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_dropout_patch_based_train_test_split sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification_lr_decay sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification_lr_decay_patch_based_train_test_split sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 """
@@ -91,17 +98,17 @@ class PathDataset(Dataset):
 class UNI_classifier(torch.nn.Module):
     def __init__(self, n_classes=20):
         super().__init__()
-        self.fc1 = torch.nn.Linear(1024, 512)
+        self.fc1 = torch.nn.Linear(1024, 1)
         # self.batch_norm = torch.nn.BatchNorm1d(512)
-        self.fc2 = torch.nn.Linear(512, n_classes)
-        # self.dropout = torch.nn.Dropout(0.25)
+        # self.fc2 = torch.nn.Linear(512, 1)
+        # self.dropout = torch.nn.Dropout(0.5)
 
     def forward(self, x):
         x = self.fc1(x)
-        x = torch.nn.functional.relu(x)
+        # x = torch.nn.functional.relu(x)
         # x = self.dropout(x)
-        x = self.fc2(x)
-        return F.softmax(x, dim=1)
+        # x = self.fc2(x)
+        return F.sigmoid(x)
 
 
 def main():
@@ -114,26 +121,27 @@ def main():
     train_losses = []
     test_losses = []
 
-    optimizer = torch.optim.Adam(classifier.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW(classifier.parameters(), lr=lr, weight_decay=0.01)
     scheduler = CustomLRScheduler(optimizer, total_epochs=epochs, decay_rate=0.76)
     folders = os.listdir("/data/pamly/embeddings")
-    all_paths = []
-    for folder in folders:
+    random.shuffle(folders)
+    # all_paths = []
+    # for folder in folders:
+    #     for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
+    #         all_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
+    # random.shuffle(all_paths)
+    # train_paths = all_paths[:int(0.8 * len(all_paths))]
+    # test_paths = all_paths[int(0.8 * len(all_paths)):]
+    train_folders = folders[:int(0.8 * len(folders))]
+    test_folders = folders[int(0.8 * len(folders)):]
+    train_paths = []
+    for folder in train_folders:
         for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
-            all_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
-    random.shuffle(all_paths)
-    train_paths = all_paths[:int(0.8 * len(all_paths))]
-    test_paths = all_paths[int(0.8 * len(all_paths)):]
-    # train_folders = folders[:int(0.8 * len(folders))]
-    # test_folders = folders[int(0.8 * len(folders)):]
-    # train_paths = []
-    # for folder in train_folders:
-    #     for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
-    #         train_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
-    # test_paths = []
-    # for folder in test_folders:
-    #     for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
-    #         test_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
+            train_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
+    test_paths = []
+    for folder in test_folders:
+        for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
+            test_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
     print(f"Train samples: {len(train_paths)} Test samples: {len(test_paths)}")
 
     train_set = PathDataset(train_paths)
@@ -144,17 +152,23 @@ def main():
     for epoch in range(epochs):
         print(f"Epoch: {epoch}")
         train_loss = 0
+        correct = 0
+        total = 0
         classifier.train()
         for (data, label) in tqdm(train_loader, "Training"):
             data = data.to(device)
-            label = label.long().to(device)
+            label = label.float().to(device)
             optimizer.zero_grad()
-            output = classifier(data)
-            loss = F.cross_entropy(output, label)
+            output = classifier(data).squeeze()
+            loss = F.binary_cross_entropy(output, label)
+            pred = output.round()
+            correct += torch.sum(pred == label).item()
+            total += len(label)
             train_loss += loss.item()
             loss.backward()
             optimizer.step()
         train_losses.append(train_loss / len(train_loader))
+        print(f"Train Accuracy: {round(correct / total, 4)}")
 
         classifier.eval()
         correct = 0
@@ -167,11 +181,11 @@ def main():
         for (data, label) in tqdm(test_loader, "Testing"):
             with torch.no_grad():
                 data = data.to(device)
-                label = label.long().to(device)
-                output = classifier(data)
-                loss = F.cross_entropy(output, label)
+                label = label.float().to(device)
+                output = classifier(data).squeeze()
+                loss = F.binary_cross_entropy(output, label)
                 test_loss += loss.item()
-                pred = output.argmax(1)
+                pred = output.round()
                 correct += torch.sum(pred == label).item()
                 total += len(label)
                 for p, l in zip(pred, label):
@@ -180,7 +194,7 @@ def main():
                         per_class_correct[l.item()] += 1
         test_losses.append(test_loss / len(test_loader))
 
-        print(f"Accuracy: {round(correct / total, 4)}")
+        print(f"Test Accuracy: {round(correct / total, 4)}")
         for i in range(2):
             # for i in range(20):
             print(
@@ -191,14 +205,14 @@ def main():
 
         scheduler.step()
 
-    if not os.path.exists("./experiments/tissue_classifier_lr_decay"):
-        os.makedirs("./experiments/tissue_classifier_lr_decay")
-    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_lr_decay/classifier.pt")
+    if not os.path.exists("./experiments/tissue_classifier_BCE_smaller_model_AdamW"):
+        os.makedirs("./experiments/tissue_classifier_BCE_smaller_model_AdamW", exist_ok=True)
+    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_BCE_smaller_model_AdamW/classifier.pt")
 
     plt.plot(train_losses, label="Train Loss")
     plt.plot(test_losses, label="Test Loss")
     plt.legend()
-    plt.savefig("./plots/tissue_classification_loss.png")
+    plt.savefig("./plots/tissue_classifier_BCE_smaller_model_AdamW_loss.png")
 
 
 if __name__ == '__main__':

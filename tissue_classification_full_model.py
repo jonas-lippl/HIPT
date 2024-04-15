@@ -18,7 +18,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 import torch.distributed as dist
 
 """
-screen -dmS binary_tissue_classification_lr_decay_full_model sh -c 'docker run --shm-size=400gb --gpus \"device=0,1,2,3,4,5,6,7\" --name jol_job2  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/tissue_classification_full_model.py; exec bash'
+screen -dmS binary_tissue_classification_full_uni_model sh -c 'docker run --shm-size=400gb --gpus \"device=0,1,2,3,4,5,6,7\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/tissue_classification_full_model.py; exec bash'
 screen -dmS binary_tissue_classification_lr_decay_resnet50 sh -c 'docker run --shm-size=400gb --gpus \"device=0,1,2,3,4,5,6,7\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=8 /mnt/tissue_classification_full_model.py; exec bash'
 screen -dmS binary_tissue_classification_lr_decay_patch_based_train_test_split_full_model sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt torchrun --standalone --nproc_per_node=1 /mnt/tissue_classification_full_model.py; exec bash'
 """
@@ -78,16 +78,16 @@ class PathDataset(Dataset):
 class UNI_classifier(torch.nn.Module):
     def __init__(self, n_classes=20):
         super().__init__()
-        self.fc1 = torch.nn.Linear(1000, 512)
+        self.fc1 = torch.nn.Linear(1024, 1)
         # self.batch_norm = torch.nn.BatchNorm1d(512)
-        self.fc2 = torch.nn.Linear(512, n_classes)
+        # self.fc2 = torch.nn.Linear(512, n_classes)
         # self.dropout = torch.nn.Dropout(0.25)
 
     def forward(self, x):
         x = self.fc1(x)
-        x = torch.nn.functional.relu(x)
+        # x = torch.nn.functional.relu(x)
         # x = self.dropout(x)
-        x = self.fc2(x)
+        # x = self.fc2(x)
         return F.sigmoid(x)
 
 
@@ -104,12 +104,13 @@ def main():
 
     classifier = UNI_classifier(n_classes=2)
     classifier = DDP(classifier.to(gpu_id), device_ids=[gpu_id])
-    # model = timm.create_model(
-    #     "vit_large_patch16_224", img_size=224, patch_size=16, init_values=1e-5, num_classes=0, dynamic_img_size=True
-    # )
-    # local_dir = "./tmp/vit_large_patch16_256.dinov2.uni_mass100k"
-    # model.load_state_dict(torch.load(os.path.join(local_dir, "model.pth"), map_location="cpu"), strict=True)
-    model = SyncBatchNorm.convert_sync_batchnorm(resnet50(weights=ResNet50_Weights.IMAGENET1K_V1))
+    model = timm.create_model(
+        "vit_large_patch16_224", img_size=224, patch_size=16, init_values=1e-5, num_classes=0, dynamic_img_size=True
+    )
+    local_dir = "./tmp/vit_large_patch16_256.dinov2.uni_mass100k"
+    model.load_state_dict(torch.load(os.path.join(local_dir, "model.pth"), map_location="cpu"), strict=True)
+    # model = resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+    model = SyncBatchNorm.convert_sync_batchnorm(model)
     model = DDP(model.to(gpu_id), device_ids=[gpu_id])
 
     effective_batch_size = 64
@@ -118,8 +119,8 @@ def main():
     train_losses = []
     test_losses = []
 
-    optimizer_G = torch.optim.Adam(model.parameters(), lr=lr)
-    optimizer_C = torch.optim.Adam(classifier.parameters(), lr=lr)
+    optimizer_G = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.0001)
+    optimizer_C = torch.optim.AdamW(classifier.parameters(), lr=lr, weight_decay=0.0001)
     scheduler_G = CustomLRScheduler(optimizer_G, total_epochs=epochs, decay_rate=0.75)
     scheduler_C = CustomLRScheduler(optimizer_C, total_epochs=epochs, decay_rate=0.75)
     folders = os.listdir("/data/pamly/sampled_tiles")
@@ -159,14 +160,18 @@ def main():
         train_loss = 0
         model.train()
         classifier.train()
+        count = 0
         for (data, label) in tqdm(train_loader, "Training"):
             data = data.to(gpu_id)
-            label = label.long().to(gpu_id)
+            label = label.float().to(gpu_id)
             optimizer_G.zero_grad()
             optimizer_C.zero_grad()
             embedding = model(data)
-            output = classifier(embedding)
-            loss = F.cross_entropy(output, label)
+            output = classifier(embedding).squeeze()
+            # if count < 5 and gpu_id == 0:
+            #     print(f"Output: {output}")
+            #     count += 1
+            loss = F.binary_cross_entropy(output, label)
             train_loss += loss.item()
             loss.backward()
             optimizer_C.step()
@@ -187,15 +192,20 @@ def main():
         # per_class_correct = {i: 0 for i in range(20)}
         per_class_total = {i: 0 for i in range(2)}
         # per_class_total = {i: 0 for i in range(20)}
+        count = 0
         for (data, label) in tqdm(test_loader, "Testing"):
             with torch.no_grad():
                 data = data.to(gpu_id)
-                label = label.long().to(gpu_id)
+                label = label.float().to(gpu_id)
                 embedding = model(data)
-                output = classifier(embedding)
-                loss = F.cross_entropy(output, label)
+                output = classifier(embedding).squeeze()
+                # if count < 5 and gpu_id == 0:
+                #     print(f"Output: {output}")
+                #     count += 1
+                loss = F.binary_cross_entropy(output, label)
                 test_loss += loss.item()
-                pred = output.argmax(dim=1)
+                pred = output.round()
+                # pred = output.argmax(dim=1)
                 # print("Output: ", output)
                 correct += torch.sum(pred == label).item()
                 total += len(label)
@@ -228,15 +238,15 @@ def main():
         if gpu_id == 0:
             print(f"Epoch took {stop - start} seconds")
 
-    if not os.path.exists("./experiments/tissue_classifier_lr_decay_resnet50"):
-        os.makedirs("./experiments/tissue_classifier_lr_decay_resnet50")
-    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_lr_decay_resnet50/classifier.pt")
-    torch.save(model.state_dict(), "./experiments/tissue_classifier_lr_decay_resnet50/feature_extractor.pt")
+    if not os.path.exists("./experiments/tissue_classifier_uni_finetune"):
+        os.makedirs("./experiments/tissue_classifier_uni_finetune", exist_ok=True)
+    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_uni_finetune/classifier.pt")
+    torch.save(model.state_dict(), "./experiments/tissue_classifier_uni_finetune/feature_extractor.pt")
 
-    plt.plot(train_losses, label="Train Loss")
-    plt.plot(test_losses, label="Test Loss")
+    plt.plot([loss.cpu() for loss in train_losses], label="Train Loss")
+    plt.plot([loss.cpu() for loss in test_losses], label="Test Loss")
     plt.legend()
-    plt.savefig("./plots/tissue_classification_loss_resnet50.png")
+    plt.savefig("./plots/tissue_classification_loss_full_uni_model.png")
 
 
 if __name__ == '__main__':

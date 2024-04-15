@@ -29,6 +29,8 @@ RUN pip3 install opencv-python
 RUN pip3 install timm
 RUN pip3 install tqdm
 RUN pip3 install pamly
+RUN pip3 install xlrd
+RUN pip3 install openpyxl
 
 
 ENV MPLCONFIGDIR=/tmp/matplotlib
