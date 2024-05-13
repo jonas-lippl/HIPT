@@ -16,7 +16,10 @@ screen -dmS binary_tissue_classification_BCE sh -c 'docker run --shm-size=400gb 
 screen -dmS binary_tissue_classification_BCE_smaller_model_slide_split sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification_BCE_smaller_model_AdamW_0.01_weight_decay sh -c 'docker run --shm-size=400gb --gpus \"device=2\" --name jol_job3  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification_BCE_dropout sh -c 'docker run --shm-size=400gb --gpus \"device=3\" --name jol_job2  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
-screen -dmS binary_tissue_classification_BCE_0.5_dropout sh -c 'docker run --shm-size=400gb --gpus \"device=1\" --name jol_job2  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_0.5_dropout_all_embeddings sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_0.25_dropout_labeled_normalized_embeddings_only sh -c 'docker run --shm-size=400gb --gpus \"device=4\" --name jol_job4  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS BCE_0.25_dropout_labeled_normalized_512px_embeddings_only sh -c 'docker run --shm-size=400gb --gpus \"device=5\" --name jol_job5  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
+screen -dmS binary_tissue_classification_BCE_0.5_dropout_labeled_embeddings_512px_only sh -c 'docker run --shm-size=400gb --gpus \"device=3\" --name jol_job4  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification_BCE_0.5_dropout_patch_based_train_test_split sh -c 'docker run --shm-size=400gb --gpus \"device=2\" --name jol_job3  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification_BCE_dropout_patch_based_train_test_split sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
 screen -dmS binary_tissue_classification_lr_decay sh -c 'docker run --shm-size=400gb --gpus \"device=0\" --name jol_job1  -it --rm -u `id -u $USER` -v /sybig/projects/FedL/data:/data -v /sybig/home/jol/Code/HIPT:/mnt jol_hipt python3 /mnt/tissue_classification.py; exec bash'
@@ -96,24 +99,24 @@ class PathDataset(Dataset):
 
 
 class UNI_classifier(torch.nn.Module):
-    def __init__(self, n_classes=20):
+    def __init__(self):
         super().__init__()
-        self.fc1 = torch.nn.Linear(1024, 1)
-        # self.batch_norm = torch.nn.BatchNorm1d(512)
-        # self.fc2 = torch.nn.Linear(512, 1)
-        # self.dropout = torch.nn.Dropout(0.5)
+        self.fc1 = torch.nn.Linear(1024, 512)
+        self.batch_norm = torch.nn.BatchNorm1d(512)
+        self.fc2 = torch.nn.Linear(512, 1)
+        self.dropout = torch.nn.Dropout(0.25)
 
     def forward(self, x):
         x = self.fc1(x)
-        # x = torch.nn.functional.relu(x)
-        # x = self.dropout(x)
-        # x = self.fc2(x)
+        x = self.dropout(x)
+        x = torch.nn.functional.relu(x)
+        x = self.fc2(x)
         return F.sigmoid(x)
 
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    classifier = UNI_classifier(n_classes=2).to(device)
+    classifier = UNI_classifier().to(device)
     # classifier = UNI_classifier(n_classes=20).to(device)
     batch_size = 64
     epochs = 50
@@ -123,12 +126,13 @@ def main():
 
     optimizer = torch.optim.AdamW(classifier.parameters(), lr=lr, weight_decay=0.01)
     scheduler = CustomLRScheduler(optimizer, total_epochs=epochs, decay_rate=0.76)
-    folders = os.listdir("/data/pamly/embeddings")
+    embedding_dir = "embeddings_512px_normalized_patches_labeled_only"
+    folders = os.listdir(f"/data/pamly/{embedding_dir}")
     random.shuffle(folders)
     # all_paths = []
     # for folder in folders:
-    #     for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
-    #         all_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
+    #     for patch in os.listdir(f"/data/pamly/{embedding_dir}/{folder}"):
+    #         all_paths.append(f"/data/pamly/{embedding_dir}/{folder}/{patch}")
     # random.shuffle(all_paths)
     # train_paths = all_paths[:int(0.8 * len(all_paths))]
     # test_paths = all_paths[int(0.8 * len(all_paths)):]
@@ -136,12 +140,12 @@ def main():
     test_folders = folders[int(0.8 * len(folders)):]
     train_paths = []
     for folder in train_folders:
-        for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
-            train_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
+        for patch in os.listdir(f"/data/pamly/{embedding_dir}/{folder}"):
+            train_paths.append(f"/data/pamly/{embedding_dir}/{folder}/{patch}")
     test_paths = []
     for folder in test_folders:
-        for patch in os.listdir(f"/data/pamly/embeddings/{folder}"):
-            test_paths.append(f"/data/pamly/embeddings/{folder}/{patch}")
+        for patch in os.listdir(f"/data/pamly/{embedding_dir}/{folder}"):
+            test_paths.append(f"/data/pamly/{embedding_dir}/{folder}/{patch}")
     print(f"Train samples: {len(train_paths)} Test samples: {len(test_paths)}")
 
     train_set = PathDataset(train_paths)
@@ -205,14 +209,14 @@ def main():
 
         scheduler.step()
 
-    if not os.path.exists("./experiments/tissue_classifier_BCE_smaller_model_AdamW"):
-        os.makedirs("./experiments/tissue_classifier_BCE_smaller_model_AdamW", exist_ok=True)
-    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_BCE_smaller_model_AdamW/classifier.pt")
+    if not os.path.exists("./experiments/tissue_classifier_BCE_0.25_dropout_AdamW_normalized_labeled_512px_embeddings_only"):
+        os.makedirs("./experiments/tissue_classifier_BCE_0.25_dropout_AdamW_normalized_labeled_512px_embeddings_only", exist_ok=True)
+    torch.save(classifier.state_dict(), "./experiments/tissue_classifier_BCE_0.25_dropout_AdamW_normalized_labeled_512px_embeddings_only/classifier.pt")
 
     plt.plot(train_losses, label="Train Loss")
     plt.plot(test_losses, label="Test Loss")
     plt.legend()
-    plt.savefig("./plots/tissue_classifier_BCE_smaller_model_AdamW_loss.png")
+    plt.savefig("./plots/tissue_classifier_BCE_0.25_dropout_AdamW_normalized_labeled_512px_embeddings_only_loss.png")
 
 
 if __name__ == '__main__':

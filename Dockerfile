@@ -32,9 +32,14 @@ RUN pip3 install pamly
 RUN pip3 install xlrd
 RUN pip3 install openpyxl
 RUN pip3 install lifelines
+RUN pip3 install scikit-survival
+RUN pip3 install numba
+RUN pip3 install umap-learn
+RUN pip3 install captum
 
 
 ENV MPLCONFIGDIR=/tmp/matplotlib
 ENV OMP_NUM_THREADS=1
 ENV TRANSFORMERS_CACHE=/tmp/transformers_cache
 ENV HF_HOME=/tmp/huggingface
+ENV NUMBA_CACHE_DIR=/tmp/numba_cache
