@@ -50,5 +50,5 @@ if __name__ == '__main__':
             image, label = torch.load(f"{tile_dir}/{slide}/{patch}")
             image = transform(image.div(255)).unsqueeze(0).to(device)
             with torch.no_grad():
-                embedding = model(image).squeeze()
+                embedding = model(image).squeeze().detach().cpu()
             torch.save((embedding, label), f"{embedding_dir}/{slide}/{patch}")
